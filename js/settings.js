@@ -39,9 +39,17 @@ const settings = (() => {
     save();
   }
   function reset(key) {
+    if (!(key in rec.user)) return;
     delete rec.user[key];
     save();
   }
+  /* Everything the account sync carries: the settings and the extra keys, without the export timestamp. */
+  function snapshot() {
+    const d = exportData();
+    delete d.saved;
+    return d;
+  }
+  const isEmpty = () => !Object.keys(rec.user).length;
   /* Everything that isn't the layout itself: settings plus window layouts, guide choices and console filters. */
   function exportData() {
     const extra = {};
@@ -65,6 +73,6 @@ const settings = (() => {
     if (!save()) throw Error("The browser didn't let the settings be saved.");
     for (const k in extra) store.setRaw(k, extra[k]);
   }
-  return { get, set, reset, exportData, importData };
+  return { get, set, reset, exportData, importData, snapshot, isEmpty, isExtraKey: (k) => SETTINGS_EXTRA_KEYS.test(k) };
 })();
 const setting = settings.get;

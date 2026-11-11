@@ -1897,3 +1897,75 @@ kbd {
   font-size: 10px;
   color: var(--mute);
 }
+
+/* Account panel (js/account.js) */
+.acctBox {
+  width: min(520px, 94vw);
+}
+.acctGoogle {
+  width: 100%;
+  padding: 8px;
+  font-weight: 600;
+}
+.acctOr {
+  text-align: center;
+  margin: 10px 0 4px;
+}
+.acctForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0;
+}
+.acctForm input {
+  max-width: none;
+}
+.acctAsk {
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+.acctDanger {
+  margin-top: 12px;
+}
+button.danger {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+#railAccount.signedIn {
+  color: var(--mic);
+}
+.mgLoading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 8px 14px;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* File › Open / Save as (js/files.js) */
+.fileBox {
+  width: min(620px, 94vw);
+}
+.fileList {
+  width: 100%;
+  border-collapse: collapse;
+}
+.fileList td {
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 4px;
+  vertical-align: middle;
+}
+.fileBtns {
+  text-align: right;
+  white-space: nowrap;
+}
+.fileBtns button {
+  margin-left: 4px;
+}

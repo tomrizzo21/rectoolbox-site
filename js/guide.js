@@ -440,13 +440,18 @@
     }
     if (!modelLoading[key] && window.THREE && THREE.GLTFLoader) {
       modelLoading[key] = true;
+      // Say what's happening while a model downloads, so an empty scene doesn't look broken.
+      const label = { performer: "the 3D performer", sax: "the saxophone" }[key];
+      if (label) loadingMsg(key, `Loading ${label}…`);
       const done = (g) => {
           modelCache[key] = g.scene;
           modelAnimations[key] = g.animations || [];
+          loadingMsg(key, null);
           setTimeout(build, 0);
         },
         failed = () => {
           modelLoading[key] = "failed";
+          loadingMsg(key, null);
         },
         loader = new THREE.GLTFLoader(),
         parse = () => {
@@ -463,12 +468,21 @@
             }
           } else loader.load(MODEL_URL[key], done, undefined, failed);
         };
-      // The models are ~22 MB of data, so they load the first time the guide needs them (js/load-data.js).
+      // The performer (~4 MB since 2026-11-11, was 21 MB) and sax load the first time the guide needs them (js/load-data.js).
       const file = { performer: "guide-performer", sax: "guide-alto-sax" }[key];
       if (file) loadData(file).then(parse, parse);
       else parse();
     }
     return false;
+  }
+  const loadingNow = {};
+  function loadingMsg(key, text) {
+    if (text) loadingNow[key] = text;
+    else delete loadingNow[key];
+    const box = $("mgLoading"),
+      msgs = Object.values(loadingNow);
+    box.hidden = !msgs.length;
+    box.textContent = msgs.join(" ");
   }
   function putModel(key, pos, rot, scale = 3.28084) {
     return model(key, (o) => {

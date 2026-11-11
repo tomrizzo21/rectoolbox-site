@@ -16,6 +16,7 @@ const ICON = {
   phase: '<path d="M2 12c2.5-6 5-6 7.5 0s5 6 7.5 0 3.5-4 5-2"/><path d="M2 12c2.5 6 5 6 7.5 0" opacity=".45"/>',
   room: '<path d="M3 20V9l9-5 9 5v11z"/><path d="M8 20v-6h8v6M3 9h18"/>',
   freq: '<path d="M3 20h18M5 16v-3M8 16V8M11 16V5M14 16v-6M17 16v-4M20 16v-2"/>',
+  account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   collapse: '<path d="M15 6l-6 6 6 6"/>',
   expand: '<path d="M9 6l6 6-6 6"/>',
 };
@@ -161,6 +162,7 @@ function applyTool() {
     b.setAttribute("aria-current", on ? "page" : "false");
   });
   $("appTitle").textContent = TOOLS[TOOL].name;
+  if (typeof files === "object") files.title(); // adds the open layout's name in the planner
 }
 function applyRailCollapsed() {
   const c = !!railState.collapsed,
@@ -182,8 +184,9 @@ function initRail() {
           `<button data-tool="${k}" title="${x.name}: ${x.tip}">${svgIcon(k)}<span class="rl">${x.name}</span></button>`,
       )
       .join("") +
-    `</div><button id="railToggle" class="rfoot"></button>`;
+    `</div><button id="railAccount" class="rfoot">${svgIcon("account")}<span class="rl">Sign in</span></button><button id="railToggle" class="rfoot"></button>`;
   rail.querySelectorAll("[data-tool]").forEach((b) => (b.onclick = () => switchTool(b.dataset.tool)));
+  $("railAccount").onclick = () => account.open(); // js/account.js
   $("railToggle").onclick = () => {
     railState.collapsed = !railState.collapsed;
     saveRail();

@@ -3,6 +3,7 @@
    - Saved data that can no longer be read is copied to "<key>-unreadable-<date>" before anything overwrites it. */
 const store = (() => {
   let warned = false;
+  const watchers = []; // called with (key) after every successful write; the account sync listens here
   function say(text) {
     console.warn("[store]", text);
     try {
@@ -32,6 +33,7 @@ const store = (() => {
     try {
       localStorage.setItem(key, text);
       warned = false;
+      watchers.forEach((f) => f(key));
       return true;
     } catch (e) {
       failed("Saving", key, e);
@@ -67,7 +69,8 @@ const store = (() => {
   function setJSON(key, value) {
     return setRaw(key, JSON.stringify(value));
   }
-  return { getRaw, setRaw, remove, getJSON, setJSON, keepUnreadable };
+  const onWrite = (f) => watchers.push(f);
+  return { getRaw, setRaw, remove, getJSON, setJSON, keepUnreadable, onWrite };
 })();
 
 /* Deep copy for plain layout data. */

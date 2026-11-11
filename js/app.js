@@ -561,6 +561,7 @@ function save() {
     lastSavedJSON = j;
   }
   store.setRaw("rt-fh-planner-v4", j);
+  if (typeof files === "object") files.title(); // "•" in the title when the open layout has unsaved changes
 }
 function applyLayout(json) {
   st = upgrade(JSON.parse(json));
@@ -6134,6 +6135,15 @@ function act(a) {
   }
   if (a === "export") {
     $("bExport").click();
+    return;
+  }
+  if (a === "fileOpen" || a === "fileSave" || a === "fileSaveAs") {
+    if (TOOL !== "planner") switchTool("planner");
+    a === "fileOpen" ? files.openList() : a === "fileSave" ? files.save() : files.saveAs(); // js/files.js
+    return;
+  }
+  if (a === "account") {
+    account.open(); // js/account.js
     return;
   }
   if (a === "layoutfreqs") {

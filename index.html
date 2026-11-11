@@ -7,8 +7,9 @@
 <link rel="stylesheet" href="css/planner.css"></head><body><div id="shell"><nav id="rail" aria-label="Tools"></nav><div id="app">
 <div id="menubar" role="menubar">
  <div class="menu"><button class="mt">File</button><div class="dd">
+  <button data-act="fileOpen">Open… <span class="sc">Ctrl+O</span></button><button data-act="fileSave">Save <span class="sc">Ctrl+S</span></button><button data-act="fileSaveAs">Save as… <span class="sc">Ctrl+Shift+S</span></button><hr>
   <button data-act="win:file">Export or import layout…</button><button data-act="export">Copy layout to clipboard</button>
-  <hr><button data-act="settingsExport">Export settings…</button><button data-act="settingsImport">Import settings…</button><input type="file" id="settingsFile" accept=".json,application/json" hidden aria-label="Settings file to import">
+  <hr><button data-act="account">Account…</button><button data-act="settingsExport">Export settings…</button><button data-act="settingsImport">Import settings…</button><input type="file" id="settingsFile" accept=".json,application/json" hidden aria-label="Settings file to import">
   <hr><div class="ddh">New from preset</div>
   <button data-fieldpreset="hancock-lineup" title="Keeps the same players and mic choices and moves the field sections into this formation. Your current layout is saved first.">Field: Hancock photo lineup</button>
   <button data-preset="jazz" title="Replaces the current stage scene only; field and floor-grid scenes stay untouched.">Stage: Jazz ensemble</button><button data-preset="kit-jazz" title="Replaces the current stage scene only.">Stage: Jazz drum kit</button><button data-preset="kit-rock" title="Replaces the current stage scene only.">Stage: Rock drum kit</button><button data-preset="rock" title="Drum kit, bass amp, lead and rhythm guitar amps and a lead vocalist. Replaces the current stage scene only.">Stage: Rock band</button>
@@ -56,6 +57,36 @@
  <div id="guides" hidden><div class="gz" data-z="left">Dock left</div><div class="gz" data-z="right">Dock right</div><div class="gz" data-z="center">Dock as document</div><div class="gz" data-z="bottom">Dock bottom</div><div id="ghi"></div></div>
 </div>
 <div id="statusbar"><button id="conBadge" class="hb" data-act="win:console" title="Open the console"></button><span id="status" aria-live="polite"></span><span class="xlr">XLR: <i style="color:#2c5d8f">■</i>50 <i style="color:#3f8f6b">■</i>25 <i style="color:#8a6d1f">■</i>20 <i style="color:#8f4d8a">■</i>10 <i style="color:#b4562d">■</i>6 <i style="color:#c0392b">■</i>3 ft · ○ joint</span></div>
+</div></div>
+<div id="fileModal" class="modalBg" hidden role="dialog" aria-modal="true" aria-labelledby="fileHead"><div class="mmBox fileBox">
+ <div class="mmHead"><h2 id="fileHead" style="flex:1">Open</h2><button data-fileclose aria-label="Close">✕</button></div>
+ <div id="fileAsk" class="acctAsk" hidden></div>
+ <div id="fileBody"></div>
+ <p id="fileMsg" class="m" aria-live="polite"></p>
+</div></div>
+<div id="acctModal" class="modalBg" hidden role="dialog" aria-modal="true" aria-labelledby="acctTitle"><div class="mmBox acctBox">
+ <div class="mmHead"><h2 id="acctTitle" style="flex:1">Account</h2><button data-acctclose aria-label="Close">✕</button></div>
+ <p class="m">Optional. Signed in, your settings follow you to other browsers and devices; signed out, everything works as before and stays in this browser. <a href="privacy.html" target="_blank" rel="noopener">Privacy</a></p>
+ <div id="acctNoWeb" hidden><p class="warn">Signing in works on <b>rectoolbox.net</b>, or from a local web server when testing (<code>python -m http.server 8000 --directory planner</code>, then open http://localhost:8000/fieldhouse-planner.html). A page opened straight from disk can't sign in.</p></div>
+ <div id="acctOut" hidden>
+  <button data-acct="google" class="acctGoogle">Continue with Google</button>
+  <div class="acctOr m">or with email</div>
+  <div class="acctForm">
+   <label class="m">Email <input id="acctEmail" type="email" autocomplete="username" aria-label="Email address"></label>
+   <label class="m">Password <input id="acctPass" type="password" autocomplete="current-password" aria-label="Password" minlength="8"></label>
+   <div class="row"><button data-acct="signIn">Sign in</button><button data-acct="signUp">Create account</button><button data-acct="reset" class="hb">Forgot password?</button></div>
+  </div>
+ </div>
+ <div id="acctIn" hidden>
+  <p>Signed in as <b id="acctWho"></b></p>
+  <div id="acctRecover" class="acctForm" hidden><label class="m">New password <input id="acctNewPass" type="password" autocomplete="new-password" aria-label="New password" minlength="8"></label><div class="row"><button data-acct="newPassword">Set new password</button></div></div>
+  <div class="row"><label class="m">Display name <input id="acctName" maxlength="80" aria-label="Display name"></label><button data-acct="saveName">Save name</button></div>
+  <p id="acctSync" class="m"></p>
+  <div class="row"><button data-acct="syncNow">Sync settings now</button><button data-acct="download">Download my data</button><button data-acct="signOut">Sign out</button></div>
+  <details class="acctDanger"><summary class="m">Delete my account</summary><p class="m">Deletes your account and everything stored with it. This browser keeps its own copy of your settings. Can't be undone.</p><div class="row"><label class="m">Type "delete" <input id="acctDelConfirm" aria-label="Type delete to confirm"></label><button data-acct="deleteAccount" class="danger">Delete my account</button></div></details>
+ </div>
+ <div id="acctAsk" class="acctAsk" hidden><p id="acctAskQ"></p><div id="acctAskBtns" class="row"></div></div>
+ <p id="acctMsg" class="m" aria-live="polite"></p>
 </div></div>
 <div id="fcmModal" class="modalBg" hidden role="dialog" aria-modal="true" aria-labelledby="fcmTitle"><div class="mmBox fcmBox">
  <div class="mmHead"><div style="flex:1"><h2 id="fcmTitle">Frequencies in this layout</h2><p id="fcmSub" class="m"></p></div><button id="fcmFull" title="Open the full Frequency chart tool with only this layout's instruments">Open in Frequency chart</button><button data-fcmclose aria-label="Close">✕</button></div>
@@ -274,12 +305,13 @@
    <div class="row"><label class="m mgSearchWrap">Search <input id="mgSearch" type="search" placeholder="e.g. bass drum, flute, baritone" autocomplete="off"><div id="mgSearchResults" hidden role="listbox" aria-label="Matching instruments"></div></label><label class="m">Filter group <select id="mgFamily"><option value="all">All instruments</option><option value="college">College / concert band</option><option value="jazz">Jazz</option><option value="rock">Rock / pop</option><option value="marching">Marching band</option></select></label><label class="m">Instrument <select id="mgInstrument"></select></label><label class="m">Posture <select id="mgPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label></div>
    <div class="row"><label class="m">Setup <select id="mgTechnique"></select></label></div>
    <div id="mgMics" class="mgSlots"></div><div id="mgAdvice" class="mgTech"></div><div id="mgWarn" class="mgWarn" aria-live="polite"></div>
-   <div class="mgScene"><canvas id="mgCanvas" aria-label="3D mic technique guide"></canvas><div class="mgCanvasTools"><div><button data-mgv="2d">▦ 2D</button><button data-mgv="3d" class="on">◩ 3D</button></div><div><button data-mga="out" title="Zoom out">−</button><button data-mga="in" title="Zoom in">+</button><button data-mga="fit">Fit</button><button data-mga="ccw" title="Rotate left">⟲</button><button data-mga="cw" title="Rotate right">⟳</button></div></div></div><p class="m">Drag to orbit, right-drag or Shift-drag to pan, scroll to zoom, double-click to refocus. The camera stays above the floor.</p>
+   <div class="mgScene"><canvas id="mgCanvas" aria-label="3D mic technique guide"></canvas><div id="mgLoading" class="mgLoading" hidden aria-live="polite"></div><div class="mgCanvasTools"><div><button data-mgv="2d">▦ 2D</button><button data-mgv="3d" class="on">◩ 3D</button></div><div><button data-mga="out" title="Zoom out">−</button><button data-mga="in" title="Zoom in">+</button><button data-mga="fit">Fit</button><button data-mga="ccw" title="Rotate left">⟲</button><button data-mga="cw" title="Rotate right">⟳</button></div></div></div><p class="m">Drag to orbit, right-drag or Shift-drag to pan, scroll to zoom, double-click to refocus. The camera stays above the floor.</p>
  </div>
 </div>
 <script src="js/store.js"></script>
 <script src="js/settings-defaults.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/config.js"></script>
 <script src="js/load-data.js"></script>
 <script src="js/tools.js"></script>
 <script src="data/models.js"></script>
@@ -293,6 +325,8 @@
 <script src="js/freqdata.js"></script>
 <script src="js/freqchart.js"></script>
 <script src="js/command.js"></script>
+<script src="js/account.js"></script>
+<script src="js/files.js"></script>
 <!-- three.js r128, kept in the project (vendor/three-r128) so 3D works offline and doesn't depend on a CDN -->
 <script src="vendor/three-r128/three.min.js"></script>
 <script src="vendor/three-r128/GLTFLoader.js"></script>

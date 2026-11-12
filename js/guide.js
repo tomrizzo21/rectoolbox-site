@@ -392,6 +392,62 @@
           ),
         ],
       },
+      /* Sound effects (BACKLOG B0a, Tom 2026-10-29): non-musical sources for game / foley recording, with the same
+         placement, pattern, bleed and pad checks. `spl`: dB SPL at 1 m when no planner source level exists (the
+         saw's from NIOSH's sound power figures, about 103–108 dBA cutting, less about 8 dB at 1 m). */
+      {
+        n: "Power saw (cutting wood)",
+        k: "saw",
+        tags: "effects sound effects foley power tool saw",
+        post: "standing",
+        spl: 100,
+        t: [
+          T(
+            "Close + perspective",
+            "Close mic to the side of the cut, away from the blade line and the dust port; a stereo pair farther back for the room. Hearing protection for everyone.",
+            P("Close mic", "Shure SM57", [-1.4, 3.0, -2.2], [0.25, 2.45, -1.45], "2–3 ft", "Cardioid dynamic; out of the blade line and the sawdust."),
+            P("Perspective pair", "Rode NT4 (XY stereo)", [-1.5, 5.0, -8], [0.25, 2.45, -1.45], "6–10 ft", "XY stereo; the saw in its space."),
+          ),
+          T(
+            "Single mic",
+            "One cardioid 3–4 ft to the side of the cut, at bench height; move back if the motor whine drowns the cut.",
+            P("Saw mic", "Shure SM57", [-2.3, 2.9, -3.0], [0.25, 2.45, -1.45], "3–4 ft", "Cardioid; aim at the cut, not the motor."),
+          ),
+        ],
+      },
+      {
+        n: "Footsteps (foley)",
+        k: "steps",
+        tags: "effects sound effects foley footsteps",
+        post: "standing",
+        t: [
+          T(
+            "Close foley mic",
+            "One mic in front of the feet, 1–3 ft away and a foot or two off the floor, on a shock mount; keep the distance the same for every take.",
+            P("Feet mic", "AKG C414 XLII", [0, 1.6, -2.2], [0, 0.1, -0.2], "1–3 ft", "Cardioid; shock-mounted; aim between the feet."),
+          ),
+          T(
+            "Close + room",
+            "The close mic for texture, a room mic 6–10 ft back for space; blend to match the picture.",
+            P("Feet mic", "AKG C414 XLII", [0, 1.6, -2.2], [0, 0.1, -0.2], "1–3 ft", "Cardioid; shock-mounted."),
+            P("Room mic", "Rode NT1", [2.5, 5, -7.5], [0, 0.2, -0.2], "6–10 ft", "Cardioid; the space around the steps."),
+          ),
+        ],
+      },
+      {
+        n: "Door (open, close, slam)",
+        k: "door",
+        tags: "effects sound effects foley door",
+        post: "standing",
+        t: [
+          T(
+            "Latch + room",
+            "A close mic on the latch side for the click and the slam, a room mic for the body of the door; both on the performer's side.",
+            P("Latch mic", "Shure SM57", [1.3, 3.8, -0.9], [0.3, 3.2, -1.55], "1–2 ft", "Cardioid; the latch and handle detail."),
+            P("Room mic", "AKG C414 XLII", [5, 5.5, -0.6], [-1, 3.3, -1.6], "6–8 ft", "Cardioid; pad on for slams."),
+          ),
+        ],
+      },
     ];
   G.find((x) => x.n === "Bass amp").t[0].di = "Single-channel DI box";
   let R,
@@ -645,7 +701,16 @@
             if (grip.distanceTo(w) > 0.05) pointBone(hand, finger, w.clone().add(grip.sub(w).normalize().multiplyScalar(0.4)));
           }
         });
-      else if (k === "vocal" || k === "amp") naturalRestPose(o);
+      else if (k === "vocal" || k === "amp" || k === "steps") naturalRestPose(o);
+      else if (k === "saw" || k === "door") {
+        // saw: both hands on the saw's handles; door: right hand on the handle, left at rest
+        const hands = k === "saw" ? [V(0.05, 2.75, -1.25), V(0.45, 2.85, -1.05)] : [null, V(0.3, 3.2, -1.45)];
+        ["Left", "Right"].forEach((side, i) => {
+          const shoulder = performerBone(o, side + "Arm").getWorldPosition(V(0, 0, 0));
+          if (!hands[i]) return pointArm(o, side, shoulder.clone().add(V(-0.08, -0.85, 0.02)), shoulder.clone().add(V(-0.13, -1.65, -0.08)));
+          pointArm(o, side, shoulder.clone().add(V(i ? 0.35 : -0.35, -0.7, -0.35)), hands[i]);
+        });
+      }
       else if (["clarinet", "sax", "trumpet", "flute", "violin"].includes(k)) {
         const hands =
           k === "sax"
@@ -1244,7 +1309,7 @@
     m.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize());
     return m;
   }
-  function line(a, b, c = 0x7653df) {
+  function line(a, b, c = theme.hex("--mic")) {
     const x = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([a, b]),
       new THREE.LineDashedMaterial({ color: c, dashSize: 0.12, gapSize: 0.08 }),
@@ -1366,50 +1431,39 @@
       add(new THREE.CircleGeometry(0.72, 20), 0xf5f2e9, V(0, k === "marchBass" ? 2.75 : 1.65, -0.89)).rotation.x =
         -Math.PI / 2;
     } else if (k === "marchBari") horn(1.6, 3.25, brass, "trumpet");
-  }
-  function polar(p, q, m) {
-    if (!$("mgPattern").checked) return;
-    const type = (MODELS[m] || {}).pat || "cardioid",
-      axis = q.clone().sub(p).normalize(),
-      rings = 26,
-      parts = 40,
-      pos = [],
-      idx = [];
-    /* p is the capsule, and every directional pattern collapses at the rear instead of becoming a sphere. */ const gain =
-      (a) => {
-        const c = Math.cos(a);
-        if (type === "omni") return 1;
-        if (type === "figure-8") return Math.abs(c);
-        if (type === "hypercardioid") return Math.max(0.025, 0.25 + 0.75 * c);
-        if (type === "supercardioid") return Math.max(0.025, 0.37 + 0.63 * c);
-        return Math.max(0.012, 0.5 * (1 + c));
-      };
-    for (let i = 0; i <= rings; i++) {
-      const th = (Math.PI * i) / rings,
-        r = 1.9 * gain(th);
-      for (let j = 0; j <= parts; j++) {
-        const ph = (2 * Math.PI * j) / parts;
-        pos.push(Math.sin(th) * Math.cos(ph) * r, Math.cos(th) * r, Math.sin(th) * Math.sin(ph) * r);
-      }
+    else if (k === "saw") {
+      // two sawhorses, a board across them, the saw on the board with its blade in the cut
+      [-1.6, 1.6].forEach((x) => {
+        add(new THREE.BoxGeometry(0.25, 0.2, 1.4), 0xb0864f, V(x, 2.2, -1.45));
+        [-0.5, 0.5].forEach((z) => [-0.15, 0.15].forEach((dx) => seg(V(x + dx, 2.1, -1.45 + z * 1.1), V(x + dx * 3, 0.02, -1.45 + z * 1.3), 0xb0864f, 0.04)));
+      });
+      add(new THREE.BoxGeometry(4.2, 0.12, 1.0), 0xd8b47a, V(0, 2.36, -1.45));
+      add(new THREE.BoxGeometry(0.42, 0.3, 0.7), 0x2b6fd6, V(0.35, 2.62, -1.3));
+      const blade = add(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 24), 0xc9ced3, V(0.25, 2.45, -1.45));
+      blade.rotation.z = Math.PI / 2;
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8), 0x222222, V(0.05, 2.75, -1.25)).rotation.x = Math.PI / 2;
+    } else if (k === "steps") {
+      add(new THREE.BoxGeometry(3, 0.1, 3), 0x9a6b3c, V(0, 0.05, -0.3));
+      for (let z = -1.6; z <= 1.0; z += 0.5) line(V(-1.5, 0.11, z), V(1.5, 0.11, z), 0x6b4626);
+    } else if (k === "door") {
+      // a prop door in a frame, latch side at x ≈ 0.4, hinges at x ≈ −2.5
+      add(new THREE.BoxGeometry(0.2, 7, 0.3), 0x7a5a3a, V(-2.6, 3.5, -1.6));
+      add(new THREE.BoxGeometry(0.2, 7, 0.3), 0x7a5a3a, V(0.5, 3.5, -1.6));
+      add(new THREE.BoxGeometry(3.3, 0.2, 0.3), 0x7a5a3a, V(-1.05, 7.0, -1.6));
+      add(new THREE.BoxGeometry(2.9, 6.8, 0.15), 0x9c7350, V(-1.05, 3.45, -1.62));
+      add(new THREE.SphereGeometry(0.08, 10, 8), 0xc9b26a, V(0.2, 3.2, -1.5));
+      [-0.8, 0.8].forEach((x) => add(new THREE.BoxGeometry(0.3, 0.2, 1.2), 0x7a5a3a, V(-1.05 + x * 1.6, 0.1, -1.6)));
     }
-    for (let i = 0; i < rings; i++)
-      for (let j = 0; j < parts; j++) {
-        const a = i * (parts + 1) + j;
-        idx.push(a, a + parts + 1, a + 1, a + 1, a + parts + 1, a + parts + 2);
-      }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    const mesh = add(geo, 0x7653df, p, 0.1);
-    mesh.quaternion.setFromUnitVectors(V(0, 1, 0), axis);
-    const wire = new THREE.LineSegments(
-      new THREE.WireframeGeometry(geo),
-      new THREE.LineBasicMaterial({ color: 0xc0a9ff, transparent: true, opacity: 0.58 }),
-    );
-    wire.position.copy(p);
-    wire.quaternion.copy(mesh.quaternion);
-    sc.add(wire);
+  }
+  /* Pickup field (BACKLOG B0, js/pickup3d.js): smooth, fading with distance and off-axis angle from the capsule;
+     the aim line is its own toggle. dref 0.25 ft = 0 dB; 24 dB shown (out to about 4 ft). */
+  function polar(p, q, m) {
+    const axis = q.clone().sub(p).normalize(),
+      cap = p.clone().add(axis.clone().multiplyScalar(0.25)),
+      type = (MODELS[m] || {}).pat || "cardioid";
+    if ($("mgPattern").checked)
+      sc.add(pickupField(THREE, { p: cap, axis, type, dref: 0.25, range: 20, n: 2600, size: 0.16, accent: theme.hex("--mic") }));
+    if ($("mgAim") && $("mgAim").checked) sc.add(pickupAim(THREE, cap, axis, 3.5, theme.hex("--mic")));
   }
   function mic(p, q, m, s) {
     const d = q.clone().sub(p).normalize(),
@@ -1612,6 +1666,13 @@
     else if (k === "drums") {
       hot(V(0, 1.85, -0.55), 0.45);
       [-0.7, 0.45, -1.45, 1.45].forEach((x) => hot(V(x, 1.75, -0.12), 0.22));
+    } else if (k === "saw") {
+      plume(V(0.25, 2.45, -1.45), V(0, 0.4, 1), 0.8, 0.35); // the cut throws sound and dust back and up
+      hot(V(0.35, 2.62, -1.3), 0.2); // the motor
+    } else if (k === "steps") [-0.22, 0.22].forEach((x) => hot(V(x, 0.12, 0.05), 0.2));
+    else if (k === "door") {
+      hot(V(0.3, 3.2, -1.55), 0.16); // latch
+      plume(V(-1.05, 3.45, -1.55), V(0, 0, 1), 0.7, 0.9); // the panel
     } else if (/Bass/.test(k)) plume(V(0, k === "marchBass" ? 2.75 : 1.65, -0.92), V(0, 0, -1), 0.7, 0.65);
     else hot(V(0, 3.9, -0.85), 0.28);
   }
@@ -1783,6 +1844,64 @@
   let notesCtx = "rec";
   const notesOpen = { src: true, acc: false, proc: false };
   const isCond = (k) => /DC/.test((MODELS[k] || {}).type || "");
+  /* Pad check (Tom, 2026-11-12): the loudest peak each chosen mic will see against its max SPL in the mic database.
+     Source levels are the planner's own (KIND in js/app.js: dB SPL at 1 m, plus 12 dB for peaks, as the planner's
+     overload warning does); the distance is the closest one the technique gives (e.g. "2–4 in" → 2 in), inverse-square
+     from 1 m and never closer than 2 in. An estimate, like the planner's: it compares, it doesn't measure.
+     A mic's built-in pad raises its max SPL; an inline pad (between mic and preamp) only protects the preamp. */
+  const GUIDE_KIND = { Vocalist: "vox", "Bass amp": "bas", "Electric guitar amp": "gtr", Trumpet: "tpt", Trombone: "tb", Saxophone: "sax", Flute: "fl", Clarinet: "cl", Piano: "pno", "Concert bass drum": "bd", "Marching bass drum": "bd", "Marching baritone": "bar" };
+  const PREAMP_DBU = 10; // many interface mic inputs clip around +10 dBu at minimum gain (check yours)
+  function kindFor(name, label) {
+    if (name !== "Drum kit") return GUIDE_KIND[name];
+    return /kick/i.test(label) ? "kck" : /snare/i.test(label) ? "snr" : /tom/i.test(label) ? "tom" : /hi-?hat/i.test(label) ? "hh" : /ride|overhead|crash|cymbal|splash/i.test(label) ? "cym" : "drm";
+  }
+  function closestFt(txt, p, q) {
+    const m = /(\d+(?:\.\d+)?)\s*(?:[–-]\s*\d+(?:\.\d+)?)?\s*(in|ft|cm|m)\b/.exec(txt || "");
+    if (m) return +m[1] * { in: 1 / 12, ft: 1, cm: 1 / 30.48, m: 1 / 0.3048 }[m[2]];
+    return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  }
+  /* What the check means for an *inline* pad, which only protects the preamp: needed when a mic's output would clip
+     it; otherwise not needed (with the reason). null when no condenser could be checked. */
+  function padLevel(pads) {
+    const c = pads.filter((x) => x.cond);
+    if (!c.length) return null;
+    if (c.some((x) => x.pre)) return { level: "needed", lvl: "needed", why: "A mic's output here can clip the preamp; see the pad check below." };
+    if (c.some((x) => x.level === "needed" && !x.withPad))
+      return { level: "", lvl: "won't help", why: "The mic itself overloads here, and an inline pad only protects the preamp: move the mic back (see the pad check below)." };
+    if (c.some((x) => x.level === "needed")) return { level: "", lvl: "not needed", why: "Use the mic's own built-in pad instead (see the pad check below); the preamp has room." };
+    if (c.some((x) => x.level === "suggested")) return { level: "suggested", lvl: "suggested", why: "A mic is close to its limit here; see the pad check below." };
+    return { level: "", lvl: "not needed with these mics", why: "The pad check below finds these mics and the preamp have room to spare here." };
+  }
+  function padCheck(name, chosen) {
+    if (typeof KIND !== "object" || typeof dbFor !== "function") return [];
+    const t = source().t[+$("mgTechnique").value];
+    return t[2]
+      .map((sl, i) => {
+        const k = kindFor(name, sl[0]),
+          model = chosen[i] || sl[1],
+          r = dbFor(model);
+        const L0 = source().spl != null ? source().spl : k && KIND[k] ? KIND[k].L : null;
+        if (L0 == null || !r || !r.x) return null;
+        const ft = closestFt(sl[4], sl[2], sl[3]),
+          L1 = L0 + 12,
+          peak = Math.round(L1 + 20 * Math.log10(1 / Math.max(0.05, ft * 0.3048))),
+          lim = r.x,
+          withPad = r.xp && r.xp > lim ? r.xp : 0,
+          out = r.s ? Math.round(20 * Math.log10(((r.s / 1000) * 10 ** ((Math.min(peak, withPad || lim) - 94) / 20)) / 0.775)) : null,
+          safeFt = 10 ** ((L1 - lim + 3) / 20) / 0.3048, // where the peak is 3 dB under the limit
+          dist = ft < 1 ? `${Math.round(ft * 12)} in` : `${+ft.toFixed(1)} ft`;
+        let level, say;
+        if (peak > lim && withPad >= peak) (level = "needed"), (say = `use its built-in pad (max ${withPad} dB with it)`);
+        else if (peak > lim)
+          (level = "needed"), (say = `too loud for this mic here${withPad ? ", even with its pad" : ""}: move it back to about ${safeFt < 1 ? Math.ceil(safeFt * 12) + " in" : safeFt.toFixed(1) + " ft"} or use a mic with a higher limit`);
+        else if (peak > lim - 6) (level = "suggested"), (say = `within 6 dB of its limit${withPad ? "; engage its pad if it distorts" : "; back off if it distorts"}`);
+        else (level = "ok"), (say = `no pad needed for the mic (about ${lim - peak} dB to spare)`);
+        let pre = "";
+        if (out != null && out > PREAMP_DBU) pre = ` Its output peaks near ${out > 0 ? "+" : ""}${out} dBu: many interface inputs clip above about +${PREAMP_DBU} dBu even at minimum gain, so an inline pad helps the preamp.`;
+        return { label: sl[0], model, peak, lim, withPad, dist, level, say, pre, out, cond: isCond(model) };
+      })
+      .filter(Boolean);
+  }
   function notes(name, chosen) {
     const N = typeof GUIDE_NOTES === "object" && GUIDE_NOTES[name],
       box = $("mgNotes");
@@ -1794,37 +1913,58 @@
     const e = (v) => (typeof esc === "function" ? esc(v) : String(v)),
       cond = chosen.some(isCond),
       draft = GUIDE_NOTES_STATUS === "draft" ? ' <span class="mgDraft" title="Written from the references below; not reviewed yet">draft</span>' : "";
+    const pads = padCheck(name, chosen),
+      padLvl = padLevel(pads);
     const acc = N.acc
       .map((a) => {
-        const off = a.cond && !cond,
-          lvl = off ? "only with a condenser" : a.out ? "needed outdoors" : a.level;
-        return `<li class="${off ? "m" : ""}"><b>${e(a.item)}</b> <span class="mgLvl ${off ? "" : a.level}">${lvl}</span><br><span class="m">${e(a.why)}</span></li>`;
+        let off = a.cond && !cond,
+          level = a.level,
+          lvl = off ? "only with a condenser" : a.out ? "needed outdoors" : a.level,
+          why = a.why;
+        // the pad check below knows these mics' limits: it decides whether the pad is needed
+        if (!off && /inline pad/i.test(a.item) && padLvl) {
+          ({ level, lvl } = padLvl);
+          off = !level;
+          why = padLvl.why;
+        }
+        return `<li class="${off ? "m" : ""}" data-item="${e(a.item)}"><b>${e(a.item)}</b> <span class="mgLvl ${off ? "" : level}">${lvl}</span><br><span class="m">${e(why)}</span></li>`;
       })
       .join("");
+    const padHtml = pads.length
+        ? `<h4 class="mgSub">Pad check for these mics</h4><ul class="mgPad">${pads
+            .map(
+              (x) =>
+                `<li data-mic="${e(x.label)}" data-level="${x.level}"><b>${e(x.label)}</b> <span class="m">${e(x.model)}</span> <span class="mgLvl ${x.level === "ok" ? "" : x.level}">${x.level === "ok" ? "fine" : x.level}</span><br><span class="m">Peaks about ${x.peak} dB SPL at ${e(x.dist)}; its max is ${x.lim} dB. ${e(x.say[0].toUpperCase() + x.say.slice(1))}.${e(x.pre)}</span></li>`,
+            )
+            .join("")}</ul><p class="m">Estimates from typical loud playing and the mic database; the closest distance the technique gives.</p>`
+        : "";
     const card = (p) =>
-      `<div class="mgProc"><b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
+      `<div class="mgProc${p.when ? " mgIf" : ""}">${p.when ? `<div class="mgWhen">If ${e(p.when)}</div>` : ""}<b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`,
+      cards = (list) => procGroups(list, card);
     const live = N.proc.live || [],
       perMic = micNotes(N, chosen)
         .map(({ label, model, M }) => {
           const list = notesCtx === "rec" ? M.rec || [] : M.live || [];
           return `<div class="mgMicNote" data-mic="${e(label)}"><b>${e(label)}</b>${model ? ` <span class="m">${e(model)}</span>` : ""}${
-            list.length ? list.map(card).join("") : `<div class="m">${notesCtx === "rec" ? "No mic-specific changes." : "As for recording."}</div>`
+            list.length ? cards(list) : `<div class="m">${notesCtx === "rec" ? "No mic-specific changes." : "As for recording."}</div>`
           }</div>`;
         })
         .join(""),
       proc =
         (notesCtx === "rec"
-          ? N.proc.rec.map(card).join("")
-          : `<p class="m">${live.length ? "Live sound: as for recording, with these changes." : "Live sound: the recording starting points work; raise the high-pass a little if the PA rumbles or feeds back."}</p>${live.map(card).join("")}`) +
+          ? cards(N.proc.rec)
+          : `<p class="m">${live.length ? "Live sound: as for recording, with these changes." : "Live sound: the recording starting points work; raise the high-pass a little if the PA rumbles or feeds back."}</p>${cards(live)}`) +
         (perMic ? `<h4 class="mgSub">Per mic in this setup</h4>${perMic}` : "");
+    // Keep what's open now: the toggle event that records it arrives later than a quick redraw (e.g. a mic change).
+    box.querySelectorAll("details[data-notes]").forEach((d) => (notesOpen[d.dataset.notes] = d.open));
     const sec = (id, title, body) => `<details data-notes="${id}"${notesOpen[id] ? " open" : ""}><summary>${title}</summary>${body}</details>`;
     box.innerHTML =
       sec("src", "Where the sound comes from" + draft, `<ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>`) +
-      sec("acc", "Accessories", `<ul class="mgAcc">${acc}</ul><p class="m">Suggested accessories for the sections in your layout are also listed in Inventory › Accessories.</p>`) +
+      sec("acc", "Accessories", `<ul class="mgAcc">${acc}</ul>${padHtml}<p class="m">Suggested accessories for the sections in your layout are also listed in Inventory › Accessories.</p>`) +
       sec(
         "proc",
         "Processing starting points",
-        `<div class="row" role="radiogroup" aria-label="Processing for"><label><input type="radio" name="mgCtx" value="rec"${notesCtx === "rec" ? " checked" : ""}> Recording / mix</label><label><input type="radio" name="mgCtx" value="live"${notesCtx === "live" ? " checked" : ""}> Live sound</label></div><p class="m">Plugin-neutral starting points: use them in any DAW plugin or outboard unit and adjust by ear.</p>${proc}`,
+        `<div class="row" role="radiogroup" aria-label="Processing for"><label><input type="radio" name="mgCtx" value="rec"${notesCtx === "rec" ? " checked" : ""}> Recording / mix</label><label><input type="radio" name="mgCtx" value="live"${notesCtx === "live" ? " checked" : ""}> Live sound</label></div><p class="m">Plugin-neutral starting points: use them in any DAW plugin or outboard unit and adjust by ear. Not every track needs every step: the ones marked <i>If…</i> are only for when you hear that problem.</p>${proc}`,
       ) +
       `<div class="mgRefs m">Sources: ${N.refs.map(([t, u]) => `<a href="${e(u)}" target="_blank" rel="noopener">${e(t)}</a>`).join(" · ")}</div>` +
       `<div class="row"><button id="mgPrint" title="A one-page sheet: the 3D view, mics, placement and these notes. Choose Save as PDF in the print dialog to keep a file.">Print / save as PDF</button></div>`;
@@ -1836,6 +1976,15 @@
           notesCtx = r.value;
           notes(name, chosen);
         }),
+    );
+  }
+  /* Usual first steps, then the fixes that are only for a problem you hear ("If it sounds boxy"). */
+  function procGroups(list, card) {
+    const usual = list.filter((p) => !p.when),
+      ifs = list.filter((p) => p.when);
+    return (
+      (usual.length ? `<div class="mgGrp" data-grp="usual"><h5>Start with</h5>${usual.map(card).join("")}</div>` : "") +
+      (ifs.length ? `<div class="mgGrp" data-grp="if"><h5>Only if you hear it</h5>${ifs.map(card).join("")}</div>` : "")
     );
   }
   /* The technique's mics (and its DI, if any) with the per-mic notes that match their slot labels. */
@@ -1862,7 +2011,7 @@
       shot = "";
     }
     const card = (p) =>
-      `<div class="card"><b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
+      `<div class="card">${p.when ? `<div class="when">If ${e(p.when)}</div>` : ""}<b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
     const ctx = notesCtx === "rec" ? "Recording / mix" : "Live sound",
       general = notesCtx === "rec" ? N.proc.rec : N.proc.live || [],
       mics = t[2]
@@ -1875,7 +2024,7 @@
       per = micNotes(N, chosen)
         .map(({ label, M }) => {
           const list = notesCtx === "rec" ? M.rec || [] : M.live || [];
-          return list.length ? `<h3>${e(label)}</h3>${list.map(card).join("")}` : "";
+          return list.length ? `<h3>${e(label)}</h3>${procGroups(list, card)}` : "";
         })
         .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${e(name)}: ${e(t[0])}</title><style>
@@ -1884,7 +2033,7 @@ h1{font-size:20px;margin:0}h2{font-size:15px;margin:14px 0 4px;border-bottom:1px
 .m{color:#555}img{width:100%;max-height:300px;object-fit:contain;border:1px solid #ddd;margin:8px 0}
 table{border-collapse:collapse}td{padding:1px 10px 1px 0;vertical-align:top}.mics td{border-bottom:1px solid #eee;padding:3px 10px 3px 0}
 .card{border-left:3px solid #888;padding:2px 8px;margin:5px 0;break-inside:avoid}.card td:first-child{color:#555;white-space:nowrap}
-ul{margin:4px 0;padding-left:18px}.draft{border:1px dashed #888;border-radius:6px;padding:0 5px;font-size:11px;color:#555}
+ul{margin:4px 0;padding-left:18px}h5{font-size:12px;margin:6px 0 2px;color:#555}.when{font-style:italic;color:#333}.draft{border:1px dashed #888;border-radius:6px;padding:0 5px;font-size:11px;color:#555}
 </style></head><body>
 <h1>${e(name)}: ${e(t[0])}</h1><div class="m">${s.post === "sitting" ? "Sitting" : "Standing"} · processing for ${ctx}${
       GUIDE_NOTES_STATUS === "draft" ? ' · <span class="draft">draft notes</span>' : ""
@@ -1893,8 +2042,11 @@ ${shot ? `<img src="${shot}" alt="3D view of the setup">` : ""}
 <p>${e(t[1])}</p>
 <h2>Mics</h2><table class="mics"><tr class="m"><td>Slot</td><td>Mic</td><td>Distance</td><td>Notes</td></tr>${mics}</table>
 <h2>Where the sound comes from</h2><ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>
-${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
-<h2>Processing starting points (${ctx})</h2><div class="m">Plugin-neutral; adjust by ear.</div>${general.map(card).join("") || '<div class="m">As for recording.</div>'}${per}
+${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
+      const pads = padCheck(name, chosen).filter((x) => x.level !== "ok");
+      return pads.length ? `<h3>Pad check</h3><ul>${pads.map((x) => `<li><b>${e(x.label)}</b> (${e(x.model)}): peaks about ${x.peak} dB SPL at ${e(x.dist)}, max ${x.lim} dB; ${e(x.say)}.${e(x.pre)}</li>`).join("")}</ul>` : "";
+    })()}
+<h2>Processing starting points (${ctx})</h2><div class="m">Plugin-neutral; adjust by ear. Steps marked "If…" are only for when you hear that problem.</div>${procGroups(general, card) || '<div class="m">As for recording.</div>'}${per}
 <p class="m">Sources: ${N.refs.map(([x]) => e(x)).join(" · ")}</p></body></html>`;
     const w = window.open("", "_blank");
     if (!w) {
@@ -2135,6 +2287,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
     "mgDist",
     "mgPattern",
     "mgSource",
+    "mgAim",
     "mgStand",
     "mgGrid",
   ];
@@ -2180,12 +2333,13 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
       $("mgSearchResults").hidden = true;
     }, 150);
   $("mgInstrument").onchange = tech;
+  window.addEventListener("rt:themechange", () => R && build()); // accents and background follow the theme
   $("mgTechnique").onchange = () => {
     pick = {};
     slots();
     build();
   };
-  ["mgFloorW", "mgFloorD", "mgDist", "mgPattern", "mgSource", "mgStand", "mgGrid"].forEach(
+  ["mgFloorW", "mgFloorD", "mgDist", "mgPattern", "mgAim", "mgSource", "mgStand", "mgGrid"].forEach(
     (id) => ($(id).onchange = build),
   );
   options();

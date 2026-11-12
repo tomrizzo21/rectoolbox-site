@@ -39,6 +39,90 @@ const RT_CONFIG = { demoProtection: false };
     act[k] = 0;
     peak[k] = 1e-12;
   });
+  /* Analysis recorder (accounts phase 4, js/analyses.js): while a file or the microphone is analysed live, keep each
+     family's activity (0–100, 10 per second) and the 8 band levels (dB, 2 per second). Numbers only, never audio. */
+  const REC_FPS = 10,
+    BAND_FPS = 2;
+  let rec = null;
+  const recReset = (source) => {
+    rec = source ? { source, t: 0, a: Object.fromEntries(FAM.map(([k]) => [k, []])), bands: [] } : null;
+    if (typeof analysesUI === "object") analysesUI.recChanged();
+  };
+  function recFrame(dt, band) {
+    if (!rec) return;
+    rec.t += dt;
+    while (rec.a.snr.length < Math.floor(rec.t * REC_FPS + 1e-6)) for (const [k] of FAM) rec.a[k].push(Math.round(act[k] * 100));
+    if (band && rec.bands.length < Math.floor(rec.t * BAND_FPS + 1e-6)) rec.bands.push(band.map((e) => Math.round(10 * Math.log10(e))));
+    if (rec.a.snr.length % REC_FPS === 0 && typeof analysesUI === "object") analysesUI.recChanged();
+  }
+  /* A saved analysis plays back on a timer: no audio, the heatmap follows the stored activity. */
+  class ReplayPlayer {
+    constructor(duration) {
+      this.duration = duration;
+      this.paused = true;
+      this.off = 0;
+      this.t0 = 0;
+      this.readyState = 4;
+      this.tagName = "REPLAY";
+      this.onended = null;
+    }
+    get currentTime() {
+      if (this.paused) return this.off;
+      const t = this.off + (performance.now() - this.t0) / 1000;
+      if (t >= this.duration) {
+        this.paused = true;
+        this.off = 0;
+        if (this.onended) this.onended();
+        return this.duration;
+      }
+      return t;
+    }
+    set currentTime(t) {
+      this.off = Math.max(0, Math.min(this.duration, t));
+      this.t0 = performance.now();
+    }
+    play() {
+      this.t0 = performance.now();
+      this.paused = false;
+      return Promise.resolve();
+    }
+    pause() {
+      if (!this.paused) this.off = this.currentTime;
+      this.paused = true;
+    }
+  }
+  window.__pbRec = {
+    // what Save analysis stores (null until there are at least 2 s)
+    result: () =>
+      rec && rec.a.snr.length >= 2 * REC_FPS
+        ? { v: 1, source: rec.source, file: rec.file || null, duration: +(rec.a.snr.length / REC_FPS).toFixed(1), fps: REC_FPS, a: rec.a, bandFps: BAND_FPS, bandHz: [63, 125, 250, 500, 1000, 2000, 4000, 8000], bands: rec.bands }
+        : null,
+    seconds: () => (rec ? rec.a.snr.length / REC_FPS : 0),
+    hash: fileHash,
+    fileObj: () => (rec && rec.file ? rec.fobj : null),
+    // play this file with a saved analysis (the caller checked the fingerprint)
+    attach: (f, saved) => loadFile(f, saved),
+    // for tests (no audio in a headless browser): record `seconds` of the current activity
+    feed: (seconds, source = "Test recording") => {
+      if (!rec) recReset(source);
+      for (let i = 0; i < seconds * REC_FPS; i++) recFrame(1 / REC_FPS, new Array(8).fill(1e-3));
+    },
+    open: (r) => {
+      stopMic();
+      if (media) media.pause();
+      $("pbVideo").style.display = "none";
+      $("pbDemo").value = "";
+      recReset(null);
+      media = new ReplayPlayer(r.duration);
+      media.onended = () => ($("pbPlay").textContent = "▶ Play");
+      pre = { fps: r.fps, a: r.a, mx: Object.fromEntries(FAM.map(([k]) => [k, 100])) };
+      $("pbMode").textContent = `Saved analysis: ${r.name || r.source} (replay without audio)`;
+      $("pbPlay").textContent = "▶ Play";
+      $("pbPlay").disabled = false;
+      $("pbSeek").disabled = false;
+      tick();
+    },
+  };
   $("pbBars").innerHTML = FAM.map(
     ([k, l]) =>
       `<div class="fam"><span>${l}</span><span class="tr"><i id="fb_${k}" style="width:0;background:${KIND[k].c}"></i></span><span class="m" id="fv_${k}">–</span></div>`,
@@ -251,6 +335,7 @@ const RT_CONFIG = { demoProtection: false };
       src = null;
     }
     $("pbPlay").disabled = true;
+    recReset(null);
     $("pbMode").textContent = "Decoding the demo…";
     let P;
     try {
@@ -287,15 +372,39 @@ const RT_CONFIG = { demoProtection: false };
     tick();
     status("Demo loaded. Press Play.");
   };
+  /* A file's fingerprint (SHA-256 of its bytes): a saved analysis remembers it, so the same recording can be
+     reattached later. The audio itself is never stored. */
+  async function fileHash(f) {
+    const d = await crypto.subtle.digest("SHA-256", await f.arrayBuffer());
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
   $("pbFile").onchange = () => {
     const f = $("pbFile").files[0];
-    if (!f) return;
+    if (f) loadFile(f);
+  };
+  /* Load a recording. Without `saved`: live analysis (and it can be saved). With `saved` (a saved analysis whose
+     fingerprint matches this file): play the audio while the heatmap follows the saved analysis. */
+  function loadFile(f, saved) {
     err();
     stopMic();
     ensureCtx();
-    pre = null;
+    pre = saved ? { fps: saved.fps, a: saved.a, mx: Object.fromEntries(FAM.map(([k]) => [k, 100])) } : null;
     $("pbDemo").value = "";
-    $("pbMode").textContent = "Live analysis";
+    $("pbMode").textContent = saved ? `Saved analysis: ${saved.name} (with its recording)` : "Live analysis";
+    recReset(saved ? null : f.name);
+    if (!saved) {
+      const r = rec;
+      rec.fobj = f; // only kept in memory, for the opt-in "Keep the audio in this browser"
+      fileHash(f)
+        .then((h) => {
+          if (rec !== r) return; // another file was loaded meanwhile
+          rec.file = { name: f.name.slice(0, 200), size: f.size, sha256: h };
+          if (typeof analysesUI === "object") analysesUI.fileLoaded(rec.file, f);
+        })
+        .catch(() => {
+          /* no fingerprint (e.g. crypto unavailable on file://): the analysis can still be saved */
+        });
+    }
     const isV = f.type.startsWith("video");
     const v = $("pbVideo");
     if (src) {
@@ -335,7 +444,7 @@ const RT_CONFIG = { demoProtection: false };
         media.onended = () => {
           $("pbPlay").textContent = "▶ Play";
         };
-        $("pbMode").textContent = "Live analysis";
+        $("pbMode").textContent = saved ? `Saved analysis: ${saved.name} (with its recording)` : "Live analysis";
         $("pbPlay").disabled = false;
         $("pbSeek").disabled = false;
         tick();
@@ -346,7 +455,7 @@ const RT_CONFIG = { demoProtection: false };
     };
     $("pbPlay").textContent = "▶ Play";
     status(`Loaded ${f.name}. Press Play.`);
-  };
+  }
   $("pbPlay").onclick = () => {
     if (!media) return;
     ensureCtx();
@@ -383,6 +492,7 @@ const RT_CONFIG = { demoProtection: false };
     ensureCtx();
     pre = null;
     $("pbMode").textContent = "Live analysis (microphone)";
+    recReset("Microphone, " + new Date().toLocaleString());
     try {
       micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -559,6 +669,7 @@ const RT_CONFIG = { demoProtection: false };
       fp = fit(perc.map(Math.sqrt), PERC);
     const raw = { ...fw, ...fp };
     const tot = band.reduce((a, b) => a + b, 0);
+    queueMicrotask(() => recFrame(dt, band));
     const sm = +$("pbSmooth").value / 100,
       att = Math.min(1, dt / (0.04 + 0.25 * sm * 0.4)),
       rel = Math.min(1, dt / (0.12 + 1.2 * sm));

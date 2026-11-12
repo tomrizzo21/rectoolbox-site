@@ -37,5 +37,12 @@ const theme = (() => {
       if (typeof status === "function") status(`Theme: ${NAMES[sel.value]}.`);
     };
   });
-  return { set, apply, get current() { return saved(); }, NAMES };
+  /* A theme colour as a number for the 3D scenes (three.js), e.g. theme.hex("--mic"); mix > 0 lightens toward white. */
+  function hex(name, fallback = 0x7653df, mix = 0) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    let n = /^#[0-9a-f]{6}$/i.test(v) ? parseInt(v.slice(1), 16) : /^#[0-9a-f]{3}$/i.test(v) ? parseInt(v.slice(1).replace(/./g, "$&$&"), 16) : fallback;
+    if (mix) n = [16, 8, 0].reduce((acc, sh) => acc | (Math.round(((n >> sh) & 255) + (255 - ((n >> sh) & 255)) * mix) << sh), 0);
+    return n;
+  }
+  return { set, apply, hex, get current() { return saved(); }, NAMES };
 })();

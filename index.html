@@ -44,7 +44,7 @@
  <button data-check="tPolar" title="Show pickup patterns (also in the View panel)">Pickup patterns</button><span class="tsep"></span>
  <label class="m">Background <select id="bgType" aria-label="Background"><option value="field">Football field</option><option value="stage">Stage</option><option value="grid">Floor grid</option></select></label><span class="tsep"></span>
  <button data-act="layoutfreqs" title="Frequency ranges of the instruments in this layout">Frequencies</button><button data-act="meter">+ Meter</button><button id="bAddRiser">+ Riser</button><button data-act="addmic" title="Add a free-standing mic">+ Mic</button><button data-act="delete" title="Delete selected (Del)">Delete</button>
- <span id="smartSt" class="m" style="margin-left:8px"></span>
+ <span id="smartSt" class="m" style="margin-left:8px"></span><span id="smartPull" style="margin-left:8px"></span>
 </div>
 <div id="main">
  <div id="autoL" class="strip v"></div><div id="dockL" class="dock col"></div><div class="split" data-side="left"></div>
@@ -151,6 +151,7 @@
    <div class="row"><span>Analysis height</span><input type="range" id="s3h" min="0" max="40" step="1" value="5" aria-label="Analysis height"><span id="s3hv" class="m">5 ft</span></div>
    <div class="row"><span>Wall slice</span><select id="s3ax" aria-label="Wall slice direction"><option value="off">Off</option><option value="u">Across the field</option><option value="v">Along the field</option></select><input type="range" id="s3p" min="0" max="100" value="50" aria-label="Wall slice position"></div>
    <div class="row"><label><input type="checkbox" id="s3vol"> 3D heat volume</label><label><input type="checkbox" id="s3mic" checked> Mics and cables</label></div>
+   <div class="row"><label><input type="checkbox" id="s3pick"> Pickup fields</label><label><input type="checkbox" id="s3aim"> Aim lines</label></div>
   </div>
   <p id="view3dNote" class="m">In 3D, its options (analysis height, wall slice, heat volume) appear here too.</p>
   <h4>Scene</h4>
@@ -280,6 +281,8 @@
   <div class="row"><label class="m">Or your own recording <input type="file" id="pbFile" accept="audio/*,video/*" aria-label="Audio or video file"></label><button id="pbMic">Use microphone</button></div>
   <div class="row"><button id="pbPlay" disabled>▶ Play</button><input type="range" id="pbSeek" min="0" max="1000" value="0" style="flex:1;width:auto" aria-label="Position" disabled><span id="pbTime" class="m">0:00 / 0:00</span></div>
   <div class="row"><label><input type="checkbox" id="pbAnim" checked> Animate the heatmap</label><label class="m">Smoothing <input type="range" id="pbSmooth" min="0" max="90" value="55" aria-label="Smoothing"></label><label class="m">Range <input type="range" id="pbRange" min="12" max="40" value="24" aria-label="Colour range in dB"></label></div>
+  <div class="row" id="anRow"><button id="anSave" disabled title="Keep this analysis (the numbers only, never the audio)">Save analysis</button><select id="anList" aria-label="Saved analyses"><option value="">Saved analyses…</option></select><button id="anOpen" disabled>Open</button><button id="anDel" disabled>Delete</button><label class="m" title="Off by default. The recording stays only in this browser, never on the server."><input type="checkbox" id="anKeep" disabled> Keep the audio in this browser</label><span id="anMsg" class="m"></span></div>
+  <div class="row" id="anSpaceRow" hidden><span id="anSpace" class="m"></span><button id="anClear" class="hb">Clear kept audio</button></div>
   <div id="pbErr" class="err"></div>
   <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap"><video id="pbVideo" playsinline style="max-width:240px;max-height:150px;display:none;border:1px solid var(--rule)"></video>
    <div id="pbBars" style="flex:1;min-width:260px"></div></div>
@@ -306,7 +309,8 @@
   <p class="m">What the guide's 3D view shows.</p>
   <h4>Show</h4>
   <div class="row"><label><input type="checkbox" id="mgDist" checked> Distance to source</label></div>
-  <div class="row"><label><input type="checkbox" id="mgPattern" checked> Mic pickup pattern</label></div>
+  <div class="row"><label><input type="checkbox" id="mgPattern" checked> Mic pickup field</label></div>
+  <div class="row"><label><input type="checkbox" id="mgAim" checked> Mic aim line</label></div>
   <div class="row"><label><input type="checkbox" id="mgSource" checked> Source sound</label></div>
   <div class="row"><label><input type="checkbox" id="mgStand" checked> Mic stands</label></div>
   <div class="row"><label><input type="checkbox" id="mgGrid"> 1 ft floor grid</label></div>
@@ -315,7 +319,7 @@
  </div>
   <div class="wc" data-win="guide">
    <p class="m">A practical starting point, not a substitute for listening in the room. Search for a source, select a setup, then choose any mic from your locker for each position.</p>
-   <div class="row"><label class="m mgSearchWrap">Search <input id="mgSearch" type="search" placeholder="e.g. bass drum, flute, baritone" autocomplete="off"><div id="mgSearchResults" hidden role="listbox" aria-label="Matching instruments"></div></label><label class="m">Filter group <select id="mgFamily"><option value="all">All instruments</option><option value="college">College / concert band</option><option value="jazz">Jazz</option><option value="rock">Rock / pop</option><option value="marching">Marching band</option></select></label><label class="m">Instrument <select id="mgInstrument"></select></label><label class="m">Posture <select id="mgPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label></div>
+   <div class="row"><label class="m mgSearchWrap">Search <input id="mgSearch" type="search" placeholder="e.g. bass drum, flute, footsteps" autocomplete="off"><div id="mgSearchResults" hidden role="listbox" aria-label="Matching instruments"></div></label><label class="m">Filter group <select id="mgFamily"><option value="all">All instruments</option><option value="college">College / concert band</option><option value="jazz">Jazz</option><option value="rock">Rock / pop</option><option value="marching">Marching band</option><option value="effects">Sound effects / foley</option></select></label><label class="m">Instrument <select id="mgInstrument"></select></label><label class="m">Posture <select id="mgPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label></div>
    <div class="row"><label class="m">Setup <select id="mgTechnique"></select></label></div>
    <div id="mgKit" class="mgKit" hidden aria-label="Build your own kit"></div>
    <div id="mgMics" class="mgSlots"></div><div id="mgAdvice" class="mgTech"></div><div id="mgWarn" class="mgWarn" aria-live="polite"></div><div id="mgNotes" class="mgNotes"></div>
@@ -331,9 +335,11 @@
 <script src="data/models.js"></script>
 <script src="data/micdb.js"></script>
 <script src="data/guide-notes.js"></script>
+<script src="js/pickup3d.js"></script>
 <script src="js/interfaces.js"></script>
 <script src="js/app.js"></script>
 <script src="js/playback.js"></script>
+<script src="js/analyses.js"></script>
 <script src="js/options.js"></script>
 <script src="js/stageplot.js"></script>
 <script src="js/phasecalc.js"></script>

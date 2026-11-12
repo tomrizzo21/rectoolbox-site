@@ -18,6 +18,7 @@
     line.userData.cable = kind;
     scene.add(line);
   };
+  window.__pickup3d = () => (scene ? scene.children.filter((o) => o.name === "pickupField").length : 0); // for tests
   window.__spectra3d = () => (scene ? scene.children.filter((o) => o.name === "groupSpectrum").length : 0); // for tests
   // For tests: every cable line's point heights.
   window.__cable3d = () => (scene ? scene.children.filter((o) => o.userData.cable).map((o) => ({ kind: o.userData.cable, ys: [...o.geometry.attributes.position.array].filter((_, i) => i % 3 === 1) })) : []);
@@ -142,9 +143,21 @@
         const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, m.h, 6), mat(0x444444, 1));
         stand.position.copy(P3(q.v, q.u, m.h / 2));
         scene.add(stand);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), mat(0x4b3fb0, 1));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), mat(theme.hex("--mic", 0x4b3fb0), 1));
         head.position.copy(P3(q.v, q.u, m.h));
         scene.add(head);
+        // Pickup field and aim line (BACKLOG B0, js/pickup3d.js): aimed along the mic's floor angle, tilted down to
+        // the players (about 4 ft up) of its section.
+        if ($("s3pick").checked || $("s3aim").checked) {
+          const a = micAim(m) * DEG,
+            t = m.g ? centroid(members(m.g)) : null,
+            dist = t ? Math.max(4, Math.hypot(t.v - q.v, t.u - q.u)) : 15,
+            axis = new THREE.Vector3(-Math.cos(a), (4 - m.h) / dist, Math.sin(a)).normalize(),
+            cap = P3(q.v, q.u, m.h),
+            type = m.pat === "xy" ? "xy" : m.pat || (MODELS[m.model] || {}).pat || "cardioid";
+          if ($("s3pick").checked) scene.add(pickupField(THREE, { p: cap, axis, type, dref: 1.5, range: 20, n: 1600, size: 4, accent: theme.hex("--mic", 0x4b3fb0) }));
+          if ($("s3aim").checked) scene.add(pickupAim(THREE, cap, axis, Math.min(dist, 30), theme.hex("--mic", 0x4b3fb0)));
+        }
         const r = res.mic[m.id];
         cableLine(r.pts || [q, r.t === "desk" ? st.desk : st.boxes[r.t]], r.cabs.some((c) => !c) ? 0xc0392b : 0x333333, "mic");
       }
@@ -476,6 +489,8 @@
   $("s3p").oninput = () => queueSlices(80);
   $("tPeople").addEventListener("change", () => build()); // one People switch for 2D and 3D
   $("s3mic").onchange = () => build();
+  $("s3pick").onchange = () => build();
+  $("s3aim").onchange = () => build();
   $("tSpec").addEventListener("change", () => !$("v3").hidden && build());
   window.addEventListener("rt:themechange", () => !$("v3").hidden && build()); // background and floor colours
   $("s3help").onclick = () => {

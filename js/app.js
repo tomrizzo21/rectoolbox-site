@@ -1491,6 +1491,7 @@ function smart(mode) {
   if (smartBusy) return;
   smartBusy = true;
   document.querySelectorAll("[data-smart]").forEach((b) => (b.disabled = true));
+  if ($("smartPull")) $("smartPull").innerHTML = "";
   const stockOnly = $("oStock").checked,
     noX = $("oClear").checked,
     moveDesk = $("oDesk").checked,
@@ -1715,8 +1716,82 @@ function smart(mode) {
             : ` · ${drawn.length} hand-drawn cable${drawn.length === 1 ? "" : "s"} kept`
           : ""
       }`;
+    pullInShow();
   }
   setTimeout(step, 0);
+}
+/* Smart route, "pull sections in" (BACKLOG, Tom 2026-11-12: "pull the far sections in" suggestion that measures how far
+   to move them). For each section with a mic that can't be reached, try moving it (with the sections it's linked or
+   locked to) straight toward the nearest snake box or desk, one foot at a time, and keep the shortest move that
+   reaches all of its mics without stranding another and without landing on another section. A suggestion: nothing
+   moves until its button is pressed, and one Undo puts it back. */
+function pullInPlan() {
+  const buy = st.buy,
+    start = solve({ buy, fast: true });
+  if (!start.fail) return { moves: [], left: 0, base: 0 };
+  const anchors = () => [st.desk, ...Object.values(st.boxes).filter((b) => b.on)],
+    stranded = (r, m) => r.mic[m.id] && r.mic[m.id].cabs.some((c) => !c),
+    moves = [];
+  let base = start;
+  // A section pulled in frees long cables the next one can use, so the moves are found one after another and kept
+  // while the rest are tried; everything is put back at the end.
+  for (let pass = 0; pass < 3 && base.fail; pass++) {
+    let progress = false;
+    for (const k of [...new Set(st.mics.filter((m) => stranded(base, m)).map((m) => m.g).filter(Boolean))]) {
+      if (moves.some((p) => p.k === k)) continue;
+      const G = gOf(k),
+        set = G.lock ? st.groups.filter((x) => x.lock === G.lock) : members(k),
+        mine = st.mics.filter((m) => m.g === k && stranded(base, m)),
+        c = mine.map(micPos).reduce((a, p) => ({ v: a.v + p.v / mine.length, u: a.u + p.u / mine.length }), { v: 0, u: 0 }),
+        to = anchors().reduce((a, b) => (dist(b, c) < dist(a, c) ? b : a)),
+        d = dist(to, c);
+      if (d < 1) continue;
+      const ux = (to.v - c.v) / d,
+        uy = (to.u - c.u) / d,
+        orig = set.map((x) => [x, x.v, x.u]);
+      let found = null;
+      for (let t = 1; t <= Math.min(80, d) && !found; t++) {
+        orig.forEach(([x, v, u]) => ((x.v = v + ux * t), (x.u = u + uy * t)));
+        if (set.some((x) => { const o = inGroup(x, 0); return o && !set.includes(o); })) continue; // would land on another section
+        const r = solve({ buy, fast: true });
+        if (mine.every((m) => !stranded(r, m)) && r.fail < base.fail) found = { t, r };
+      }
+      if (found) {
+        base = found.r;
+        moves.push({ k, set: set.map((x) => x.k), label: G.l, t: found.t, ux, uy, to: to === st.desk ? "the desk" : `the ${to.short}-ch box` });
+        progress = true;
+      } else orig.forEach(([x, v, u]) => ((x.v = v), (x.u = u)));
+    }
+    if (!progress) break;
+  }
+  const left = base.fail;
+  // restore: the moves were applied while searching; subtract them again
+  for (const p of moves) for (const k of p.set) { const G = gOf(k); G.v -= p.ux * p.t; G.u -= p.uy * p.t; }
+  return { moves, left, base: start.fail };
+}
+function pullInShow() {
+  const box = $("smartPull");
+  if (!box) return;
+  const plan = pullInPlan();
+  window.__pullInPlans = plan;
+  if (!plan.base) {
+    box.innerHTML = "";
+    return;
+  }
+  const names = plan.moves.map((p) => `${esc(p.label)} ${p.t} ft toward ${p.to}`).join(", ");
+  box.innerHTML = plan.moves.length
+    ? `<button data-pull="all" style="white-space:nowrap" title="Move ${names.replace(/<[^>]*>/g, "")}. Nothing else changes; Ctrl+Z undoes it.">Pull sections in</button><span class="m"> ${plan.moves.map((p) => `${esc(p.label)} ${p.t} ft`).join(", ")}: reaches ${plan.base - plan.left} of ${plan.base} stranded mic${plan.base === 1 ? "" : "s"}${plan.left ? `; ${plan.left} still need${plan.left === 1 ? "s" : ""} more cable or a box` : ""}</span>`
+    : `<span class="m">Moving sections closer wouldn't reach the stranded mics: they need more cable or another box.</span>`;
+  const b = box.querySelector("[data-pull]");
+  if (b)
+    b.onclick = () => {
+      for (const p of plan.moves) for (const k of p.set) { const G = gOf(k); G.v += p.ux * p.t; G.u += p.uy * p.t; }
+      save();
+      heatDirty = true;
+      draw(true);
+      box.innerHTML = "";
+      status(`Pulled ${plan.moves.map((p) => `${p.label} in ${p.t} ft`).join(", ")}. Ctrl+Z puts it back; run Smart route again to re-check the cables.`);
+    };
 }
 
 /* ---------- drawing ---------- */
@@ -4465,14 +4540,16 @@ function polarSVG(pat) {
 }
 function frSVG(fr) {
   if (!fr) return `<p class="m">No response data for this mic.</p>`;
-  const W = 300,
+  // ±15 dB, widened in 5 dB steps for strongly shaped mics (e.g. a scooped kick mic)
+  const R = Math.max(15, Math.ceil(Math.max(...fr.map((p) => Math.abs(p[1]))) / 5) * 5),
+    W = 300,
     H = 150,
     x = (f) => 30 + ((Math.log10(f) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20))) * (W - 40),
-    y = (d) => 15 + ((15 - d) / 30) * (H - 35);
+    y = (d) => 15 + ((R - d) / (2 * R)) * (H - 35);
   let g = "";
   for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000])
     g += `<line x1="${x(f)}" y1="15" x2="${x(f)}" y2="${H - 20}" stroke="var(--rule)"/><text x="${x(f)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--mute)">${f >= 1000 ? f / 1000 + "k" : f}</text>`;
-  for (const d of [-10, 0, 10])
+  for (const d of R > 15 ? [-R + 5, -10, 0, 10, R - 5].filter((v, i, a) => a.indexOf(v) === i) : [-10, 0, 10])
     g += `<line x1="30" x2="${W - 10}" y1="${y(d)}" y2="${y(d)}" stroke="var(--rule)" ${d ? "" : 'stroke-width="1.5"'}/><text x="26" y="${y(d) + 3}" text-anchor="end" font-size="9" fill="var(--mute)">${d > 0 ? "+" : ""}${d}</text>`;
   const pts = [[20, fr[0][1]], ...fr, [20000, fr[fr.length - 1][1]]].filter((p, i, a) => i === 0 || p[0] > a[i - 1][0]);
   let d = "";
@@ -4523,7 +4600,12 @@ function openMicInfo(k, row) {
    })()}<h4>Preamp in this rig</h4><p>${M.pre === "D8" ? "DigiMax D8 (pad on)" : "ADA8000"}${M.ch ? " · 2 channels" : ""}</p></div></div>
    <div class="mmSec"><h4>Polar pattern</h4><div>${pats.map((p) => `<button class="chip ${p === mmPat || pats.length === 1 ? "on" : ""}" data-mmpat="${p}">${p === "xy" ? "XY pair" : p}</button>`).join("")}</div>
     <div id="mmPolar">${polarSVG(pats.length === 1 ? pats[0] : mmPat)}</div><p class="m">${M.pattern || ""}</p></div>
-   <div class="mmSec"><h4>Frequency response</h4>${frSVG(M.fr)}
+   <div class="mmSec"><h4>Frequency response</h4>${frSVG(M.fr || (dbFor(k) || row || {}).fr)}${(() => {
+     const r = dbFor(k) || row;
+     return r && r.fr && !(MODELS[k] && MODELS[k].fr)
+       ? `<p class="m">Traced from the maker's published chart${r.frPat ? ` (${esc(r.frPat)})` : ""}, relative to 1 kHz; about ±1 dB. ${r.frSrc ? r.frSrc.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">source${r.frSrc.length > 1 ? " " + (i + 1) : ""}</a>`).join(" · ") : ""}</p>`
+       : "";
+   })()}
     <h4>Good for</h4><p>${[M.best, M.uses && M.uses !== M.best ? "Your notes: " + M.uses : ""].filter(Boolean).join("<br>") || "—"}</p>
     <h4>Avoid</h4><p>${M.avoid || "—"}</p>
     <h4>About it</h4><p>${M.ai || "—"}${M.notes ? `<br><span class="m">Your notes: ${M.notes}</span>` : ""}</p></div></div>`;
@@ -4672,7 +4754,7 @@ function modelFromDb(r) {
     pre: cond && !r.pad ? "D8" : "ADA",
     ch: P.pat === "xy" ? 2 : undefined,
     custom: 1,
-    fr: null,
+    fr: r.fr || null,
     avoid: "",
     opts: [r.pad ? "Pad" : "", r.hpf ? "HPF" : "", P.pats.length > 1 ? "Pattern switch" : ""]
       .filter(Boolean)
@@ -6749,6 +6831,8 @@ const UI_CHECKS = [
     "pbAnim",
     "s3mic",
     "s3vol",
+    "s3pick",
+    "s3aim",
   ],
   UI_VALS = [
     "wfColor",

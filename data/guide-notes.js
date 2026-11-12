@@ -8,7 +8,8 @@
      acc:    [{ item, level: "needed" | "suggested", why, cond, out }]   cond: true = only matters with a condenser mic;
              out: true = needed outdoors, suggested indoors (the planner's Room setting decides)
              item names match Inventory › Accessories where one exists, so the gear list can count them
-     proc:   { rec: [{ kind, set: [[parameter, value]], why }], live: [...] }   live lists only what differs
+     proc:   { rec: [{ kind, set: [[parameter, value]], why, when }], live: [...] }   live lists only what differs;
+             no `when` = a usual first step; `when` = only if you hear the problem it names ("it sounds boxy")
      mics:   [{ match: regex source, rec: [...], live: [...], note }]   optional: processing for one mic of a multi-mic
              technique, matched against the guide's slot label (e.g. "Snare bottom"); first match wins
      refs:   [[title, url]]                                                                                       */
@@ -24,20 +25,33 @@ const GUIDE_REFS = {
   sosClar: ["Sound On Sound: What's the best way to mic a clarinet?", "https://www.soundonsound.com/sound-advice/q-what-best-way-mike-clarinet"],
   atBrass: ["Audio-Technica: Tips for recording brass instruments", "https://audio-technica.com/en-us/blog/basic-recording-techniques-tips-recording-brass-instruments"],
   recBrass: ["Recording Magazine: Miking brass and winds", "https://recordingmag.com/resources/recording-info/miking-brass-and-winds"],
+  niosh: ["NIOSH Power Tools Sound and Vibration Database (CDC)", "https://wwwn.cdc.gov/niosh-sound-vibration/"],
+  nioshWiki: ["NIOSH Power Tools Database (overview)", "https://en.wikipedia.org/wiki/NIOSH_Power_Tools_Database"],
+  krotos: ["Krotos: Foley recording techniques", "https://krotos.studio/blog/foley-recording"],
+  premium: ["PremiumBeat: Recording Foley and sound effects, the fundamentals", "https://www.premiumbeat.com/blog/recording-foley-and-sound-effects-the-fundamentals/"],
+  violet: ["Violet Design: How to record your own sound effects", "https://violetrecording.com/how-to-record-sound-effects/"],
   shure: ["Shure: Making an independent recording (points to Shure's Microphone Techniques for Recording booklet)", "https://www.shure.com/en-US/insights/making-an-independent-recording-part-2"],
 };
 // Shared processing blocks, so the same idea reads the same everywhere.
 const GP = {
   hpf: (f, why) => ({ kind: "EQ: high-pass", set: [["Frequency", f], ["Slope", "12–18 dB/oct"]], why: why || "Removes rumble, handling and stand noise below the instrument's range." }),
-  comp: (ratio, atk, rel, gr, why) => ({
+  comp: (ratio, atk, rel, gr, why, when) => ({
     kind: "Compressor",
+    when: when || "the level jumps between quiet and loud passages and won't sit steadily in the mix",
     set: [["Threshold", `set for ${gr} of gain reduction on the loudest notes`], ["Ratio", ratio], ["Attack", atk], ["Release", rel], ["Knee", "soft"], ["Make-up gain", "match the bypassed level"]],
     why,
   }),
-  verb: (type, pre, why) => ({ kind: "Reverb (send)", set: [["Type", type], ["Pre-delay", pre], ["Send level", "to taste; start low"]], why }),
+  verb: (type, pre, why) => ({ kind: "Reverb (send)", set: [["Type", type], ["Pre-delay", pre], ["Send level", "to taste; start low"]], why, when: "it sounds dry or too close next to the rest of the mix" }),
   align: (why) => ({ kind: "Phase / time alignment", set: [["Polarity", "check each mic against the closest one; flip if the low end thins"], ["Delay", "nudge the farther mic(s) to line up with the close mic, or leave the room mic late on purpose"]], why }),
 };
-const GATE = (lo, hi, why) => ({ kind: "Gate", set: [["Threshold", "just under the softest hit"], ["Range", `${lo}–${hi} dB (not fully closed)`], ["Attack", "0.1–1 ms"], ["Hold", "50–100 ms"], ["Release", "100–300 ms (with the decay)"]], why });
+const GATE = (lo, hi, why) => ({ kind: "Gate", when: "bleed from the rest of the kit muddies this channel", set: [["Threshold", "just under the softest hit"], ["Range", `${lo}–${hi} dB (not fully closed)`], ["Attack", "0.1–1 ms"], ["Hold", "50–100 ms"], ["Release", "100–300 ms (with the decay)"]], why });
+/* Fixes for a problem you hear: only when it's there. */
+const FIX = (when, kind, set, why) => ({ kind, set, why, when }),
+  CUT = (when, f, g, q, why) => FIX(when, "EQ cut", [["Frequency", f], ["Gain", g], ["Width", q]], why),
+  BOOST = (when, f, g, q, why) => FIX(when, "EQ boost", [["Frequency", f], ["Gain", g], ["Width", q]], why),
+  SHELF = (when, f, g, why) => FIX(when, "EQ high shelf", [["Frequency", f], ["Gain", g]], why),
+  LPF = (when, f, why) => FIX(when, "EQ low-pass", [["Frequency", f], ["Slope", "12 dB/oct"]], why),
+  HP = (f, why) => ({ kind: "EQ: high-pass", set: [["Frequency", f], ["Slope", "12–18 dB/oct"]], why });
 const GUIDE_NOTES = {
   Vocalist: {
     source: [
@@ -53,9 +67,11 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("80–100 Hz (lower for deep voices)"),
-        { kind: "EQ", set: [["Cut", "200–400 Hz, 2–3 dB, wide (Q 1), if it sounds boxy or close"], ["Boost", "3–5 kHz, 1–3 dB, for presence"], ["Air", "high shelf at 10–12 kHz, +1–3 dB"]], why: "Clears up close-mic muddiness and brings the words forward." },
+        CUT("it sounds boxy, muddy or too close", "200–400 Hz", "−2 to −3 dB", "wide (Q about 1)", "Proximity effect piles up low mids on a close mic."),
+        BOOST("the words get lost behind the band", "3–5 kHz", "+1 to +3 dB", "medium (Q 1–2)", "The presence range carries the consonants."),
+        SHELF("it sounds dull or dark", "10–12 kHz", "+1 to +3 dB", "Adds air without the harshness of a 5 kHz boost."),
         GP.comp("3:1–4:1", "5–15 ms", "50–100 ms (or auto)", "3–6 dB", "Evens out the level so every word sits in the mix."),
-        { kind: "De-esser", set: [["Frequency", "5–8 kHz (find the harshest 's')"], ["Reduction", "3–6 dB on s sounds only"]], why: "Tames sibilance that EQ and compression make worse." },
+        { kind: "De-esser", when: "s, sh and t sounds are harsh or spitty (often worse after the presence boost and compression)", set: [["Frequency", "5–8 kHz (find the harshest 's')"], ["Reduction", "3–6 dB on s sounds only"]], why: "Tames sibilance that EQ and compression make worse." },
         GP.verb("plate or small hall", "40–80 ms", "The pre-delay keeps the words clear of the reverb."),
       ],
       live: [GP.hpf("100–120 Hz", "Cuts stage rumble and handling noise and gives feedback less low end to grab."), GP.comp("4:1", "5–10 ms", "60–100 ms", "4–8 dB", "Keeps the vocal above the band as the singer moves.")],
@@ -72,7 +88,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("80–100 Hz"),
-        { kind: "EQ", set: [["Cut", "150–250 Hz, 2–4 dB, if boomy"], ["Boost", "5–10 kHz shelf, +1–2 dB, for sparkle"]], why: "Controls soundhole boom and keeps the strumming clear." },
+        CUT("it sounds boomy (the mic hears the soundhole)", "150–250 Hz", "−2 to −4 dB", "medium (Q 1–2)", "Controls soundhole boom."),
+        SHELF("the strumming sounds dull, without sparkle", "5–10 kHz", "+1 to +2 dB", "Brings out the string detail."),
         GP.comp("2:1–3:1", "15–30 ms", "100–200 ms", "2–4 dB", "A slow attack lets the pick attack through while evening the strumming."),
       ],
       live: [GP.hpf("100–120 Hz", "Acoustic guitars feed back first in the low mids; a higher high-pass and a narrow cut at the ringing frequency help.")],
@@ -89,7 +106,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("30–40 Hz", "Removes sub-sonic rumble without thinning the bass."),
-        { kind: "EQ", set: [["Cut", "200–400 Hz, 2–4 dB, if muddy"], ["Boost", "700 Hz–1 kHz, 1–3 dB, for definition on small speakers"]], why: "Keeps the bass audible on phones and laptops." },
+        CUT("it sounds muddy or the notes blur together", "200–400 Hz", "−2 to −4 dB", "wide (Q about 1)", "Clears the low mids the bass shares with everything else."),
+        BOOST("the bass disappears on phones and laptops", "700 Hz–1 kHz", "+1 to +3 dB", "medium (Q 1–2)", "Small speakers can't play the fundamental; the harmonics carry the notes."),
         GP.comp("4:1", "10–30 ms", "100–200 ms", "4–6 dB", "Bass needs a steady level to anchor the mix."),
         GP.align("Amp mic and DI arrive a few milliseconds apart; aligning them keeps the low end solid."),
       ],
@@ -98,13 +116,14 @@ const GUIDE_NOTES = {
     mics: [
       {
         match: "^Cab mic",
-        rec: [{ kind: "EQ", set: [["High-pass", "40–50 Hz"], ["Cut", "250–400 Hz, 2–3 dB, if boomy"]], why: "The mic brings the amp's growl and mids; the DI can carry the deepest lows." }],
+        rec: [HP("40–50 Hz", "The mic brings the amp's growl and mids; the DI can carry the deepest lows."), CUT("the cab mic sounds boomy", "250–400 Hz", "−2 to −3 dB", "wide (Q about 1)", "Speaker cabinets resonate in the low mids.")],
       },
       {
         match: "^Direct input",
         rec: [
           { kind: "Blend with the cab mic", set: [["Delay", "delay the DI by about 1–3 ms (or nudge it in the DAW) until the two line up"], ["Polarity", "flip the DI if the blend gets thinner"], ["Balance", "DI for the low end, mic for the tone; start equal and adjust"]], why: "The amp and speaker make the mic's signal arrive later than the DI." },
-          { kind: "EQ", set: [["High-pass", "30 Hz"], ["Low-pass", "5–8 kHz, to remove string and pickup noise"]], why: "A DI hears everything, including the fret noise the speaker would roll off." },
+          HP("30 Hz", "Removes sub-sonic rumble."),
+          LPF("string, fret or pickup noise is audible", "5–8 kHz", "A DI hears everything, including the fret noise the speaker would roll off."),
         ],
       },
     ],
@@ -120,7 +139,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("80–100 Hz"),
-        { kind: "EQ", set: [["Low-pass", "8–10 kHz, to remove fizz"], ["Cut", "2–4 kHz, narrow, if harsh"]], why: "Speakers don't produce much above 5–6 kHz; anything higher is mostly fizz and noise." },
+        LPF("it sounds fizzy or hissy on top", "8–10 kHz", "Speakers don't produce much above 5–6 kHz; anything higher is mostly fizz and noise."),
+        CUT("it sounds harsh or ice-picky", "2–4 kHz (sweep to find it)", "−2 to −4 dB", "narrow (Q 3–5)", "A narrow peak in the speaker's response; a wide cut would dull the guitar."),
         GP.align("Close and room mics arrive milliseconds apart; check polarity and alignment before blending."),
       ],
       live: [],
@@ -134,7 +154,7 @@ const GUIDE_NOTES = {
         match: "^Room mic",
         rec: [
           { kind: "Time", set: [["Delay", "about 0.9 ms per foot later than the close mic"], ["Choice", "slide it back to line up for a fuller sound, or leave it late for more space"], ["Polarity", "flip it if the blend gets thinner"]], why: "Sound takes about 0.9 ms to travel a foot." },
-          { kind: "EQ", set: [["High-pass", "100–150 Hz"], ["Low-pass", "8 kHz"]], why: "Keeps the low end and fizz with the close mic; the room mic is for space." },
+          { kind: "EQ: high- and low-pass", set: [["High-pass", "100–150 Hz"], ["Low-pass", "8 kHz"]], why: "Keeps the low end and fizz with the close mic; the room mic is for space." },
           { kind: "Level", set: [["Blend", "6–12 dB under the close mic, to taste"]], why: "A little room goes a long way." },
         ],
         live: [{ kind: "Live sound", set: [["Room mic", "usually left out live: it mostly picks up the PA and the band"]], why: "On stage the close mic does the job." }],
@@ -155,7 +175,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("100–150 Hz"),
-        { kind: "EQ", set: [["Cut", "2–4 kHz, 2–3 dB, if piercing"], ["Boost", "around 250 Hz, 1–2 dB, if thin"]], why: "Softens the bell's beam of highs and gives body to a close mic." },
+        CUT("it sounds piercing", "2–4 kHz", "−2 to −3 dB", "medium (Q 1–2)", "Softens the bell's beam of highs."),
+        BOOST("it sounds thin, especially on a close mic", "around 250 Hz", "+1 to +2 dB", "wide (Q about 1)", "Gives body back to a close mic."),
         GP.comp("3:1", "10–20 ms", "80–150 ms", "2–5 dB", "Brass dynamics are wide; light compression keeps solos and soft passages both audible."),
         GP.verb("hall", "20–40 ms", "Close-miked brass sounds dry; reverb puts the distance back."),
       ],
@@ -176,7 +197,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("60–80 Hz"),
-        { kind: "EQ", set: [["Cut", "300–500 Hz, 2–3 dB, if tubby"], ["Boost", "1–2 kHz, 1–2 dB, for edge"]], why: "Keeps the trombone's weight without muddiness." },
+        CUT("it sounds tubby", "300–500 Hz", "−2 to −3 dB", "wide (Q about 1)", "Keeps the trombone's weight without muddiness."),
+        BOOST("it lacks edge or gets lost in the band", "1–2 kHz", "+1 to +2 dB", "medium (Q 1–2)", "Brings out the brassy edge."),
         GP.comp("3:1", "10–20 ms", "100–150 ms", "2–5 dB", "Evens out the wide dynamic range."),
       ],
       live: [],
@@ -193,7 +215,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("80–120 Hz (alto higher, baritone lower)"),
-        { kind: "EQ", set: [["Cut", "800 Hz–1.2 kHz, 2–3 dB, narrow, if honky"], ["Boost", "high shelf above 8 kHz, +1–2 dB, for breath"]], why: "Removes the 'honk' a bell-heavy position adds." },
+        CUT("it sounds honky or nasal", "800 Hz–1.2 kHz", "−2 to −3 dB", "narrow (Q 3–5)", "Removes the honk a bell-heavy position adds."),
+        SHELF("it sounds dull, with no breath", "8 kHz and up", "+1 to +2 dB", "Brings back the breath and air."),
         GP.comp("3:1–4:1", "10–20 ms", "80–150 ms", "3–6 dB", "Saxes jump in level between registers."),
       ],
       live: [],
@@ -213,7 +236,7 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("150–250 Hz", "The flute has almost nothing below middle C; a high high-pass removes breath thumps and room rumble."),
-        { kind: "EQ", set: [["Cut", "2–4 kHz, 1–3 dB, if breathy or shrill"]], why: "Smooths a close mic." },
+        CUT("it sounds breathy or shrill", "2–4 kHz", "−1 to −3 dB", "medium (Q 1–2)", "Smooths a close mic."),
         GP.comp("2:1–3:1", "15–30 ms", "100–200 ms", "2–4 dB", "Gentle; flutes are quiet in the low register and loud up high."),
       ],
       live: [],
@@ -230,7 +253,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("100–150 Hz"),
-        { kind: "EQ", set: [["Cut", "300–500 Hz, 1–3 dB, if woody or boxy"], ["Gentle cut", "3–5 kHz if key clicks stand out"]], why: "Cleans up a close mic without losing the tone." },
+        CUT("it sounds woody or boxy", "300–500 Hz", "−1 to −3 dB", "wide (Q about 1)", "Cleans up a close mic without losing the tone."),
+        CUT("key clicks stand out", "3–5 kHz", "−1 to −2 dB", "medium (Q 1–2)", "Gentle; moving the mic back is the better fix."),
         GP.comp("2:1", "20–30 ms", "100–200 ms", "1–3 dB", "Light: clarinets are already fairly even."),
       ],
       live: [],
@@ -250,7 +274,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("150–200 Hz (viola: 100–150 Hz)"),
-        { kind: "EQ", set: [["Cut", "2–4 kHz, 1–3 dB, if scratchy"], ["Cut", "around 400 Hz if boxy"]], why: "Softens bow noise and box tone." },
+        CUT("it sounds scratchy (bow noise)", "2–4 kHz", "−1 to −3 dB", "medium (Q 1–2)", "Softens bow noise."),
+        CUT("it sounds boxy", "around 400 Hz", "−1 to −3 dB", "wide (Q about 1)", "Reduces the box tone of a close mic."),
         GP.verb("hall", "20–40 ms", "Strings expect a room around them."),
       ],
       live: [],
@@ -267,7 +292,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("30–40 Hz", "Removes pedal thumps without touching the lowest notes."),
-        { kind: "EQ", set: [["Cut", "200–400 Hz, 1–3 dB, if muddy"], ["Boost", "high shelf above 8 kHz, +1–2 dB"]], why: "Clarity in a mix." },
+        CUT("it sounds muddy in the mix", "200–400 Hz", "−1 to −3 dB", "wide (Q about 1)", "Clarity next to bass and guitars."),
+        SHELF("it sounds dull or far away", "8 kHz and up", "+1 to +2 dB", "Brings the attack and air forward."),
         GP.comp("2:1", "20–30 ms", "150–300 ms", "1–3 dB", "Very light, or none, for solo piano."),
         GP.align("Two mics on one piano: check them in mono for comb filtering."),
       ],
@@ -288,7 +314,7 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.align("Check each close mic against the overheads; flip polarity where the low end gets thinner."),
-        { kind: "Bus compressor (whole kit, optional)", set: [["Ratio", "2:1–4:1"], ["Attack", "10–30 ms"], ["Release", "100 ms or auto"], ["Gain reduction", "2–4 dB"]], why: "Glues the close mics and overheads into one kit." },
+        { kind: "Bus compressor (whole kit)", when: "the kit sounds like separate mics rather than one instrument", set: [["Ratio", "2:1–4:1"], ["Attack", "10–30 ms"], ["Release", "100 ms or auto"], ["Gain reduction", "2–4 dB"]], why: "Glues the close mics and overheads into one kit." },
       ],
       live: [],
     },
@@ -297,13 +323,17 @@ const GUIDE_NOTES = {
         match: "^Kick out",
         rec: [
           { kind: "Blend with the kick in mic", set: [["Delay", "the out mic arrives about 0.9 ms per foot later; nudge it to line up, or leave it for depth"], ["Polarity", "flip one if the blend loses low end"], ["Balance", "in mic for click, out mic for boom"]], why: "Two mics on one drum, a foot or more apart." },
-          { kind: "EQ", set: [["High-pass", "25–35 Hz"], ["Cut", "300–500 Hz if boxy"]], why: "The out mic carries the weight; leave the click to the in mic." },
+          HP("25–35 Hz", "The out mic carries the weight; leave the click to the in mic."),
+          CUT("the out mic sounds boxy", "300–500 Hz", "−2 to −4 dB", "wide (Q about 1)", "The shell's resonance builds up in front of the drum."),
         ],
       },
       {
         match: "^Kick",
         rec: [
-          { kind: "EQ", set: [["High-pass", "30–40 Hz"], ["Cut", "300–500 Hz, 3–6 dB (cardboard tone)"], ["Boost", "60–80 Hz for weight, 3–5 kHz for beater click"]], why: "Weight plus click, without the boxy middle." },
+          HP("30–40 Hz", "Removes sub-sonic rumble below the drum's fundamental."),
+          CUT("it sounds boxy, like cardboard", "300–500 Hz", "−3 to −6 dB", "wide (Q about 1)", "The shell's resonance; cutting it leaves weight and click."),
+          BOOST("it sounds dull, with no beater click", "3–5 kHz", "+2 to +4 dB", "medium (Q 1–2)", "The beater hitting the head lives here; it lets the kick cut through."),
+          BOOST("it lacks weight", "60–80 Hz", "+2 to +4 dB", "wide (Q about 1)", "The fundamental; check on full-range speakers, not only headphones."),
           GP.comp("4:1", "10–30 ms (lets the beater attack through)", "50–100 ms", "3–6 dB", "Punch and a steady level."),
         ],
         live: [GATE(15, 30, "Keeps the bleed from the rest of the kit out of the kick channel.")],
@@ -311,7 +341,10 @@ const GUIDE_NOTES = {
       {
         match: "^Snare( top)?$",
         rec: [
-          { kind: "EQ", set: [["High-pass", "80–100 Hz"], ["Boost", "150–250 Hz for body, 5 kHz for crack"], ["Cut", "800 Hz–1 kHz if ringy"]], why: "Body and crack." },
+          HP("80–100 Hz", "Removes kick bleed below the snare."),
+          BOOST("it sounds thin, with no body", "150–250 Hz", "+2 to +3 dB", "wide (Q about 1)", "The snare's fundamental."),
+          BOOST("it sounds dull, with no crack", "about 5 kHz", "+2 to +3 dB", "medium (Q 1–2)", "Stick attack and the wires' crack."),
+          CUT("it rings (a pitched overtone hangs on)", "800 Hz–1 kHz (sweep to find it)", "−3 to −6 dB", "narrow (Q 3–5)", "A narrow cut removes the ring; tuning or a gel pad is the better fix."),
           GP.comp("4:1", "10–30 ms (lets the stick attack through)", "50–100 ms", "3–6 dB", "Evens out ghost notes against rim shots."),
         ],
       },
@@ -319,30 +352,34 @@ const GUIDE_NOTES = {
         match: "^Snare bottom",
         rec: [
           { kind: "Polarity", set: [["Polarity", "flip (invert) against the snare top mic"], ["Check", "with it flipped, the two together should sound fuller, not thinner"]], why: "The bottom mic faces the top mic, so the heads move it the opposite way." },
-          { kind: "EQ", set: [["High-pass", "200–400 Hz"], ["Boost", "5–8 kHz, 2–4 dB, for the wires"]], why: "It's there for the snare wires; the top mic carries the body." },
+          HP("200–400 Hz", "It's there for the snare wires; the top mic carries the body."),
+          BOOST("the wires don't sizzle enough", "5–8 kHz", "+2 to +4 dB", "medium (Q 1–2)", "Where the wires' rattle sits."),
           { kind: "Level", set: [["Blend", "6–12 dB under the snare top, to taste"]], why: "A little adds sizzle; too much sounds like a hi-hat." },
         ],
       },
       {
         match: "tom",
         rec: [
-          { kind: "EQ", set: [["High-pass", "60–80 Hz (floor) or 80–120 Hz (rack)"], ["Cut", "300–600 Hz, 2–4 dB, if boxy"], ["Boost", "3–5 kHz, 2–3 dB, for stick attack"]], why: "Tone and attack without the cardboard middle." },
+          HP("60–80 Hz (floor) or 80–120 Hz (rack)", "Removes kick bleed below the tom."),
+          CUT("it sounds boxy", "300–600 Hz", "−2 to −4 dB", "wide (Q about 1)", "Tone without the cardboard middle."),
+          BOOST("it sounds dull, with no stick attack", "3–5 kHz", "+2 to +3 dB", "medium (Q 1–2)", "The stick on the head."),
           GATE(10, 20, "Cuts the bleed between tom hits; open enough to keep the decay natural."),
         ],
         live: [GATE(15, 30, "Live, gates keep the stage bleed and ring out of the PA.")],
       },
       {
         match: "^Hi-hat",
-        rec: [{ kind: "EQ", set: [["High-pass", "200–400 Hz"], ["Cut", "around 1 kHz, 2–3 dB, if clangy"]], why: "Removes the snare and kick it picks up; the overheads often carry enough hi-hat that this mic stays low." }],
+        rec: [HP("200–400 Hz", "Removes the snare and kick it picks up; the overheads often carry enough hi-hat that this mic stays low."), CUT("it sounds clangy", "around 1 kHz", "−2 to −3 dB", "medium (Q 1–2)", "The hi-hat's metallic clang.")],
       },
       {
         match: "^Ride",
-        rec: [{ kind: "EQ", set: [["High-pass", "300–500 Hz"], ["Cut", "1–3 kHz, 2 dB, if harsh"]], why: "Keeps the ping and lets the overheads carry the wash." },],
+        rec: [HP("300–500 Hz", "Keeps the ping and lets the overheads carry the wash."), CUT("it sounds harsh", "1–3 kHz", "about −2 dB", "medium (Q 1–2)", "Softens the stick's ping.")],
       },
       {
         match: "^Overhead",
         rec: [
-          { kind: "EQ", set: [["High-pass", "150–300 Hz (cymbal mics) or 60–80 Hz (the main kit sound)"], ["Cut", "2–4 kHz, 1–2 dB, if harsh"]], why: "Choose: overheads as cymbal mics, or as the main kit sound." },
+          HP("150–300 Hz (cymbal mics) or 60–80 Hz (the main kit sound)", "Choose: overheads as cymbal mics, or as the main kit sound."),
+          CUT("the cymbals sound harsh", "2–4 kHz", "−1 to −2 dB", "wide (Q about 1)", "Tames the cymbals' harshest range."),
           { kind: "Pan", set: [["Overhead L / R", "left and right, wide (drummer's or audience view; pick one and keep the toms matching)"]], why: "The pair gives the kit its stereo picture." },
         ],
       },
@@ -359,7 +396,7 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("25–35 Hz", "Keeps the fundamental and removes sub-sonic air movement."),
-        { kind: "EQ", set: [["Cut", "200–400 Hz, 2–4 dB, if boxy"]], why: "Keeps the boom without muddying the band." },
+        CUT("it sounds boxy or muddies the band", "200–400 Hz", "−2 to −4 dB", "wide (Q about 1)", "Keeps the boom without muddying the band."),
         GP.comp("2:1–3:1", "30 ms+", "200–400 ms", "2–3 dB", "Slow and light, to keep the strokes' natural attack."),
       ],
       live: [],
@@ -376,7 +413,8 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("30–40 Hz"),
-        { kind: "EQ", set: [["Cut", "300–600 Hz, 2–4 dB, if boxy"], ["Boost", "2–4 kHz, 1–2 dB, for stick attack"]], why: "Pitch and attack of each drum stay audible." },
+        CUT("it sounds boxy", "300–600 Hz", "−2 to −4 dB", "wide (Q about 1)", "Lets each drum's pitch come through."),
+        BOOST("the drums blur together, with no attack", "2–4 kHz", "+1 to +2 dB", "medium (Q 1–2)", "Stick attack separates the runs between drums."),
         GP.comp("3:1", "20–30 ms", "100–200 ms", "2–4 dB", "Evens out players at different distances."),
       ],
       live: [],
@@ -396,12 +434,87 @@ const GUIDE_NOTES = {
     proc: {
       rec: [
         GP.hpf("60–80 Hz"),
-        { kind: "EQ", set: [["Cut", "300–500 Hz, 2–3 dB, if tubby"], ["Boost", "1–2 kHz, 1–2 dB, for definition"]], why: "Clarity without losing warmth." },
+        CUT("it sounds tubby", "300–500 Hz", "−2 to −3 dB", "wide (Q about 1)", "Clarity without losing warmth."),
+        BOOST("it lacks definition", "1–2 kHz", "+1 to +2 dB", "medium (Q 1–2)", "Brings out the attack of each note."),
         GP.comp("3:1", "10–20 ms", "100–150 ms", "2–5 dB", "Outdoor dynamics are wide."),
         GP.verb("hall", "20–40 ms", "Puts back the space an outdoor recording lacks."),
       ],
       live: [],
     },
     refs: [GUIDE_REFS.dpaTpt, GUIDE_REFS.atBrass],
+  },
+  /* Sound effects (BACKLOG B0a). Facts from the references; the processing is common practice, as above. */
+  "Power saw (cutting wood)": {
+    source: [
+      "Two sources: the motor's whine and the blade in the wood. The cut is what sells the sound; aim at it, not at the motor.",
+      "NIOSH measured circular saws at about 103–108 dBA of sound power while cutting, about 4 dB more than idling: roughly 100 dB at 1 m.",
+      "The blade throws sawdust and chips back and out of the dust port: keep mics and cables out of that line and out of the cut-off piece's fall.",
+      "Safety first: hearing protection for everyone in the room, the operator in charge of the tool, and nobody reaching in to move a mic while it runs.",
+    ],
+    acc: [
+      { item: "Foam windscreen", level: "needed", why: "Keeps sawdust out of the grille and the capsule; easy to clean or replace." },
+      { item: "Hearing protection", level: "needed", why: "Around 100 dB at 1 m is well past the 85 dBA where NIOSH recommends protection; monitor on closed headphones at a safe level." },
+      { item: "Shock mount", level: "suggested", why: "The bench and sawhorses shake; keep the stand on the floor, not the work surface.", cond: true },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("60–80 Hz", "Removes the rumble of the bench and the room without thinning the cut."),
+        CUT("the motor whine is louder than the cut", "find the whine (often 1–4 kHz)", "−3 to −6 dB", "narrow (Q 4–8)", "A narrow cut on the motor's pitch leaves the cut itself alone."),
+        FIX("the start of the cut clips or jumps out", "Limiter", [["Ceiling", "−1 dBFS"], ["Release", "50–100 ms"]], "Catches the peaks as the blade bites; better: set the gain lower and record a safety track."),
+        GP.verb("small room or garage", "10–20 ms", "Puts a close, dry saw into the scene's space."),
+      ],
+      live: [],
+    },
+    mics: [
+      {
+        match: "^Perspective pair",
+        rec: [{ kind: "Level", set: [["Blend", "with the close mic, to match the shot: more pair for a wide shot"]], why: "The pair is the saw in its room; the close mic is the detail." }],
+      },
+    ],
+    refs: [GUIDE_REFS.niosh, GUIDE_REFS.nioshWiki, GUIDE_REFS.violet],
+  },
+  "Footsteps (foley)": {
+    source: [
+      "The sound is the shoe meeting the surface: match the shoe and the surface to the picture, and record a short sample of each surface first.",
+      "A close mic (about 1–3 ft) gives dry texture and detail; a room mic further back gives space. Recording both lets the editor balance them.",
+      "Keep the distance, gain and position the same through a scene so the steps match when cut together; vary heel-first, toe-first, shuffles and stops.",
+      "Floor vibration reaches the mic through the stand: use a shock mount, and keep the stand off the foley board.",
+    ],
+    acc: [
+      { item: "Shock mount", level: "needed", why: "Every step shakes the floor, and the stand passes it to the mic.", cond: true },
+      { item: "Foley board (surfaces)", level: "suggested", why: "Wood, concrete, gravel or carpet panels to match the scene's floor." },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("60–100 Hz", "Removes floor thumps and room rumble below the step itself."),
+        CUT("the steps sound boomy or hollow", "150–300 Hz", "−2 to −4 dB", "wide (Q about 1)", "The board and the room resonate there."),
+        BOOST("the steps lack detail (grit, squeak)", "3–6 kHz", "+1 to +3 dB", "medium (Q 1–2)", "The texture of the sole on the surface."),
+        FIX("the room noise between steps is distracting", "Expander", [["Threshold", "just under the softest step"], ["Ratio", "1:2"], ["Range", "6–10 dB"], ["Release", "100–200 ms"]], "Lowers the noise between steps without cutting off the steps."),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.krotos, GUIDE_REFS.premium, GUIDE_REFS.violet],
+  },
+  "Door (open, close, slam)": {
+    source: [
+      "A door has several parts: the handle and latch (click detail), the hinges (creaks), and the panel and frame (the body of a slam).",
+      "Close mics catch the latch and handle detail; a mic further back catches the door's body and the room.",
+      "Slams are sudden and loud: leave generous headroom, since a clipped peak is ruined, and use a recorder's safety track if it has one.",
+      "Big slams can be built from layers (a wooden hit, a deeper thud, a metal clang) as well as recorded whole.",
+    ],
+    acc: [
+      { item: "Inline pad (−20 dB)", level: "suggested", why: "Slams close to a condenser can reach the preamp's limit.", cond: true },
+      { item: "Shock mount", level: "suggested", why: "A slam shakes the floor and the stand.", cond: true },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("40–60 Hz", "Removes rumble; keep the thud of a slam."),
+        BOOST("the slam lacks weight", "80–120 Hz", "+2 to +4 dB", "wide (Q about 1)", "The body of the door."),
+        BOOST("the latch and handle are hard to hear", "2–5 kHz", "+1 to +3 dB", "medium (Q 1–2)", "The click detail."),
+        FIX("the slam's peak clips or jumps out", "Limiter", [["Ceiling", "−1 dBFS"], ["Release", "50–100 ms"]], "Catches the transient; lower the gain first."),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.krotos, GUIDE_REFS.violet],
   },
 };

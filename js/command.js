@@ -125,7 +125,7 @@ function buildCommands() {
   // Mic techniques notes (js/guide.js): open the guide and unfold the section
   for (const [id, label, keys] of [
     ["src", "Where the sound comes from", "sound source radiation bell body instrument notes"],
-    ["acc", "Accessories for this instrument", "pad windscreen pop filter clip shock mount notes"],
+    ["acc", "Accessories for this instrument", "pad check max SPL overload windscreen pop filter clip shock mount notes"],
     ["proc", "Processing starting points", "eq compressor gate de-esser reverb plugin settings mix live notes"],
   ])
     add(

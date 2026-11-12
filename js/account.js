@@ -225,11 +225,13 @@ const account = (() => {
       if (!dirty) say("Settings are up to date.");
     },
     download: async (c) => {
-      const [p, s] = await Promise.all([
+      const [p, s, l, a] = await Promise.all([
         c.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         c.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
+        c.from("layouts").select("*").eq("owner", user.id),
+        c.from("analyses").select("*").eq("owner", user.id),
       ]);
-      const blob = new Blob([JSON.stringify({ account: { id: user.id, email: user.email }, profile: p.data, settings: s.data }, null, 1)], {
+      const blob = new Blob([JSON.stringify({ account: { id: user.id, email: user.email }, profile: p.data, settings: s.data, layouts: l.data || [], analyses: a.data || [] }, null, 1)], {
           type: "application/json",
         }),
         url = URL.createObjectURL(blob);

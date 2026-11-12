@@ -44,6 +44,13 @@
   --warn: #b85c00;
   --ok: #2e7d32;
   --mic: #ce1126;
+  /* Black menu bar and tool rail (Tom, 2026-11-11: "more black"). */
+  --chrome-bg: #141414;
+  --chrome-ink: #ffffff;
+  --chrome-mute: #c9c3c4;
+  --chrome-hover: #2b2b2b;
+  --chrome-rule: #000000;
+  --chrome-accent: #ff5a6a;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -286,8 +293,8 @@ body {
   width: 176px;
   display: flex;
   flex-direction: column;
-  background: var(--card);
-  border-right: 1px solid var(--rule);
+  background: var(--chrome-bg, var(--card));
+  border-right: 1px solid var(--chrome-rule, var(--rule));
   padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
   transition: width 0.15s;
@@ -310,7 +317,7 @@ body {
   border: 0;
   border-radius: 4px;
   background: none;
-  color: var(--mute);
+  color: var(--chrome-mute, var(--mute));
   font: inherit;
   font-size: 13px;
   text-align: left;
@@ -321,19 +328,19 @@ body {
   flex: none;
 }
 #rail button:hover {
-  background: var(--field);
-  color: var(--ink);
+  background: var(--chrome-hover, var(--field));
+  color: var(--chrome-ink, var(--ink));
 }
 #rail button.on {
-  background: var(--field);
-  color: var(--mic);
-  box-shadow: inset 3px 0 0 var(--mic);
+  background: var(--chrome-hover, var(--field));
+  color: var(--chrome-accent, var(--mic));
+  box-shadow: inset 3px 0 0 var(--chrome-accent, var(--mic));
 }
 #rail.collapsed .rl {
   display: none;
 }
 #rail .rfoot {
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--chrome-hover, var(--rule));
   border-radius: 0;
   margin: 0;
   padding: 8px 12px;
@@ -376,9 +383,28 @@ body:not([data-tool="planner"]) #toolbar {
   align-items: center;
   gap: 0;
   padding: 0 6px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--card);
+  border-bottom: 1px solid var(--chrome-rule, var(--rule));
+  background: var(--chrome-bg, var(--card));
+  color: var(--chrome-ink, var(--ink));
   height: 28px;
+}
+#menubar > .menu > .mt {
+  color: inherit;
+}
+#menubar .dd {
+  color: var(--ink);
+}
+#menubar > .menu > .mt:hover,
+#menubar > .menu.open > .mt {
+  background: var(--chrome-hover, var(--field));
+}
+#menubar .apptitle {
+  color: var(--chrome-mute, var(--mute));
+}
+#menubar .cmdOpen {
+  background: var(--chrome-hover, var(--field));
+  border-color: var(--chrome-hover, var(--rule));
+  color: var(--chrome-mute, var(--mute));
 }
 .menu {
   position: relative;
@@ -2126,6 +2152,28 @@ body.wireDrawing #f {
   padding: 4px 8px;
   border-left: 3px solid var(--mic);
   background: var(--field);
+}
+.mgPad {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.mgPad li {
+  margin: 3px 0;
+}
+.mgProc.mgIf {
+  border-left-style: dashed;
+}
+.mgWhen {
+  font-style: italic;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.mgGrp h5 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  color: var(--mute, inherit);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .mgProc table {
   width: auto;

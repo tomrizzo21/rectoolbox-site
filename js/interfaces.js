@@ -163,7 +163,7 @@ function ifaceSection(I, used) {
         (u, i) =>
           `<div class="ifCard"><b>${esc(u.name)}</b> · ${u.preamps} mic preamp${u.preamps === 1 ? "" : "s"} · ${u.inputs.map((x) => `${x.count} ${x.kind}`).join(", ")}${u.phantom ? ` · phantom ${esc(u.phantom)}` : ""}${u.sampleRates ? ` · ${u.sampleRates.map((r) => r / 1000).join("/")} kHz` : ""}${
             u.source ? ` · <a href="${esc(u.source)}" target="_blank" rel="noopener">source</a>` : ""
-          } <button class="hb" data-ifdel="${i}" aria-label="Remove ${esc(u.name)}">✕</button>${u.checks ? `<div class="m">Please check: ${esc(u.checks)}</div>` : ""}</div>`,
+          } <button class="hb" data-ifdel="${i}" aria-label="Remove ${esc(u.name)}">✕</button>${u.source ? ` <button class="hb" data-ifshare="${i}" title="Share this unit's published specs in the shared catalog after review" aria-label="Share ${esc(u.name)} in the shared catalog">Share</button>` : ""}${u.checks ? `<div class="m">Please check: ${esc(u.checks)}</div>` : ""}</div>`,
       )
       .join("");
   }
@@ -171,6 +171,8 @@ function ifaceSection(I, used) {
   h += `<div class="row"><button id="ifPromptCopy">Copy the AI prompt</button><span class="m">Paste it into any AI assistant and fill in the brand and model.</span></div>
 <textarea id="ifPaste" rows="4" placeholder="Paste the AI's reply here…" aria-label="AI reply with the interface JSON"></textarea>
 <div class="row"><button id="ifPasteAdd">Add from pasted reply</button><label class="m">or <input type="file" id="ifFile" accept=".json,application/json,text/plain" aria-label="Interface file"></label></div><div id="ifErr" class="err" aria-live="polite"></div>`;
+  h += invHead("Shared catalog", "Interfaces other people added and had checked. Add one to your gear, or share one of yours (Share, above): it appears for everyone only after it has been reviewed. Needs a connection.");
+  h += `<div class="row"><button id="catOpen">Browse the shared catalog</button><span id="catMsg" class="err" aria-live="polite"></span></div><div id="ifCat"></div>`;
   return h;
 }
 function bindIfaceSection() {
@@ -205,6 +207,27 @@ function bindIfaceSection() {
         status(`${u.name} removed.`);
       }),
   );
+  document.querySelectorAll("[data-ifshare]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        const u = I.ifaces[+b.dataset.ifshare];
+        if (typeof catalogUI !== "object" || !catalogUI.signedIn()) return ($("catMsg").textContent = "Sign in (Account, on the left) to share an interface.");
+        if (!confirm(`Share ${u.name} in the shared catalog?
+
+Its published specs (brand, model, inputs, phantom, pads, sample rates, source page) are submitted for review and shown to everyone once approved. Your layout and notes are not shared.`)) return;
+        try {
+          await catalogUI.share(u);
+          $("catMsg").textContent = "";
+          status(`${u.name} submitted: it appears for everyone once it has been reviewed.`);
+          catalogUI.render($("ifCat"));
+        } catch (err) {
+          $("catMsg").textContent = err.message || String(err);
+        }
+      }),
+  );
+  const catOpen = $("catOpen");
+  if (catOpen) catOpen.onclick = () => (typeof catalogUI === "object" ? catalogUI.render($("ifCat")) : ($("catMsg").textContent = "The shared catalog isn't available here."));
+  if (typeof catalogUI === "object" && catalogUI.opened) catalogUI.render($("ifCat"));
   const take = (text) => {
     const r = parseIface(text);
     if (r.errors) {

@@ -448,6 +448,91 @@
           ),
         ],
       },
+      /* More sound effects (BACKLOG B0a). `spl` is the planner's own estimate of the peak level at 1 m (no measured
+         source for these): hammer on an anvil about 105, a car's exhaust about 95, pouring water about 70, a small
+         group applauding about 85. The pad check uses it, so it compares setups rather than measuring. */
+      {
+        n: "Impacts (hammer on metal)",
+        k: "hit",
+        tags: "effects sound effects foley impact hammer metal",
+        post: "standing",
+        spl: 105,
+        t: [
+          T(
+            "Close + perspective",
+            "A close dynamic to the side of the strike, out of the line of flying chips, and a stereo pair back for the space; leave plenty of headroom.",
+            P("Close mic", "Shure SM57", [-1.3, 3.1, -2.3], [0, 2.75, -1.4], "2–3 ft", "Cardioid dynamic; out of the strike's line."),
+            P("Perspective pair", "Rode NT4 (XY stereo)", [-1.5, 5.0, -8], [0, 2.75, -1.4], "6–10 ft", "XY stereo; the hit in its room."),
+          ),
+          T(
+            "Single mic",
+            "One cardioid 3 ft to the side and a little above the anvil; move back for a rounder sound.",
+            P("Impact mic", "Shure SM57", [-2.1, 3.6, -2.4], [0, 2.75, -1.4], "3 ft", "Cardioid; aim at the striking spot."),
+          ),
+        ],
+      },
+      {
+        n: "Car engine and exhaust",
+        k: "car",
+        tags: "effects sound effects foley vehicle car engine exhaust",
+        post: "standing",
+        spl: 95,
+        frame: [2.5, -9, 28], // camera target y, z and distance: the car is long
+        t: [
+          T(
+            "Tailpipe + body",
+            "The exhaust mic goes off to the side of the pipe, never in the exhaust stream; a second mic farther back picks up the body and pipe howl. Keep wind protection on both.",
+            P("Exhaust mic", "Shure SM57", [3.2, 1.3, -3.6], [0.9, 0.9, -5.4], "about 3 ft", "Cardioid dynamic; about 50° off the pipe's axis, windscreen on."),
+            P("Body mic", "AKG C414 XLII", [-4, 4.5, -1], [0, 2.5, -8.5], "10–12 ft", "Cardioid; the car as a whole."),
+          ),
+          T(
+            "Single mic",
+            "One mic to the side of the rear bumper at about waist height, angled across the tailpipe, not at it.",
+            P("Car mic", "Shure SM57", [3.4, 2.6, -2.8], [0.5, 1.5, -5.6], "4 ft", "Cardioid; off-axis, windscreen on."),
+          ),
+        ],
+      },
+      {
+        n: "Water pouring",
+        k: "water",
+        tags: "effects sound effects foley water pour splash",
+        post: "standing",
+        spl: 70,
+        t: [
+          T(
+            "Close mic",
+            "A condenser 1–2 ft away at the side of the bucket, with a windscreen against splashes; plastic and towels on the floor.",
+            P("Water mic", "Rode NT1", [-1.4, 3.4, -2.3], [0.1, 2.4, -1.5], "1–2 ft", "Cardioid; windscreen on; out of the splash zone."),
+          ),
+          T(
+            "Close + room",
+            "The close mic for the texture and a room mic farther back for the space around the pour.",
+            P("Water mic", "Rode NT1", [-1.4, 3.4, -2.3], [0.1, 2.4, -1.5], "1–2 ft", "Cardioid; windscreen on."),
+            P("Room mic", "AKG C414 XLII", [2.6, 5.0, -6.5], [0.1, 2.4, -1.5], "6–8 ft", "Cardioid; the room around the pour."),
+          ),
+        ],
+      },
+      {
+        n: "Applause (small group)",
+        k: "clap",
+        tags: "effects sound effects foley applause crowd claps",
+        post: "standing",
+        spl: 85,
+        frame: [3.5, -3.5, 19],
+        t: [
+          T(
+            "Spaced pair above the group",
+            "Two cardioids high above and in front of the group, aimed down at it, away from any PA.",
+            P("Crowd mic L", "AKG C414 XLII", [-3.5, 8.5, -1.5], [-1.4, 3.4, -5.5], "about 10 ft", "Cardioid; high and angled down."),
+            P("Crowd mic R", "AKG C414 XLII", [3.5, 8.5, -1.5], [1.4, 3.4, -5.5], "about 10 ft", "Cardioid; matches the left mic."),
+          ),
+          T(
+            "Single mic",
+            "One mic high in front of the group, aimed at its middle.",
+            P("Crowd mic", "AKG C414 XLII", [0, 8.5, -1.5], [0, 3.4, -5.5], "about 10 ft", "Cardioid; high and angled down."),
+          ),
+        ],
+      },
     ];
   G.find((x) => x.n === "Bass amp").t[0].di = "Single-channel DI box";
   let R,
@@ -702,9 +787,16 @@
           }
         });
       else if (k === "vocal" || k === "amp" || k === "steps") naturalRestPose(o);
-      else if (k === "saw" || k === "door") {
-        // saw: both hands on the saw's handles; door: right hand on the handle, left at rest
-        const hands = k === "saw" ? [V(0.05, 2.75, -1.25), V(0.45, 2.85, -1.05)] : [null, V(0.3, 3.2, -1.45)];
+      else if (k === "saw" || k === "door" || k === "hit" || k === "water" || k === "clap" || k === "car") {
+        // saw: both hands on the saw's handles; door: right hand on the handle, left at rest; hit: hammer raised in the
+        // right hand; water: both hands on the jug; clap: hands together; car: at rest
+        const hands =
+          k === "saw" ? [V(0.05, 2.75, -1.25), V(0.45, 2.85, -1.05)]
+          : k === "hit" ? [null, V(0.35, 3.5, -1.35)]
+          : k === "water" ? [V(-0.05, 3.0, -1.1), V(0.3, 3.05, -1.15)]
+          : k === "clap" ? [V(-0.12, 3.5, -0.95), V(0.12, 3.5, -0.95)]
+          : k === "car" ? [null, null]
+          : [null, V(0.3, 3.2, -1.45)];
         ["Left", "Right"].forEach((side, i) => {
           const shoulder = performerBone(o, side + "Arm").getWorldPosition(V(0, 0, 0));
           if (!hands[i]) return pointArm(o, side, shoulder.clone().add(V(-0.08, -0.85, 0.02)), shoulder.clone().add(V(-0.13, -1.65, -0.08)));
@@ -1294,6 +1386,12 @@
     sc.add(l);
     cam = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
     tar = V(0, 2.5, -0.25);
+    const f0 = source().frame;
+    if (f0) {
+      tar.set(0, f0[0], f0[1]);
+      orb.r = f0[2];
+      framed = true;
+    }
     bind();
     return true;
   }
@@ -1368,6 +1466,7 @@
     const hd = add(new THREE.CylinderGeometry(r * 0.92, r * 0.92, 0.04, 20), 0xf5f2e9, V(x, y + h / 2 + 0.025, z));
     [-0.7, 0.7].forEach((s) => seg(V(x + s * r, y - h / 2, z), V(x + s * r, y - h / 2 - 0.6, z), 0x9aa4ad, 0.025));
   }
+  const CLAPPERS = [[-1.8, -4.6], [0, -4.4], [1.8, -4.6], [-0.9, -6.4], [0.9, -6.4], [-2.6, -6.6], [2.6, -6.6]];
   function instrument(k, post) {
     const y = post === "sitting" ? 2.45 : 3.0,
       brass = 0xd7aa42,
@@ -1442,6 +1541,33 @@
       const blade = add(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 24), 0xc9ced3, V(0.25, 2.45, -1.45));
       blade.rotation.z = Math.PI / 2;
       add(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8), 0x222222, V(0.05, 2.75, -1.25)).rotation.x = Math.PI / 2;
+    } else if (k === "hit") {
+      add(new THREE.BoxGeometry(2.4, 0.15, 1.4), 0xb0864f, V(0, 2.3, -1.4)); // bench
+      [-1, 1].forEach((x) => [-1, 1].forEach((z) => seg(V(x * 1.1, 2.3, -1.4 + z * 0.6), V(x * 1.1, 0.02, -1.4 + z * 0.6), 0xb0864f, 0.05)));
+      add(new THREE.BoxGeometry(0.9, 0.35, 0.45), 0x4a4f57, V(0, 2.55, -1.4)); // anvil block
+      seg(V(0.35, 3.5, -1.35), V(0.05, 2.78, -1.4), 0x8a6a45, 0.03); // hammer handle
+      add(new THREE.BoxGeometry(0.28, 0.14, 0.14), 0x6b7280, V(0.36, 3.55, -1.35));
+    } else if (k === "car") {
+      add(new THREE.BoxGeometry(6, 2.4, 15), 0x5b7aa6, V(0, 2.0, -13)); // body
+      add(new THREE.BoxGeometry(5.2, 1.3, 7), 0x8fb0d6, V(0, 3.9, -13.5)); // cabin
+      [-3.1, 3.1].forEach((x) =>
+        [-9, -17].forEach((z) => {
+          const w = add(new THREE.CylinderGeometry(1.1, 1.1, 0.7, 18), 0x222428, V(x, 1.1, z));
+          w.rotation.z = Math.PI / 2;
+        }),
+      );
+      add(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 12), 0x9aa0a8, V(0.9, 0.9, -5.2)).rotation.x = Math.PI / 2; // tailpipe
+    } else if (k === "water") {
+      add(new THREE.BoxGeometry(2.4, 0.15, 1.4), 0xb0864f, V(0, 2.0, -1.5));
+      [-1, 1].forEach((x) => [-1, 1].forEach((z) => seg(V(x * 1.1, 2.0, -1.5 + z * 0.6), V(x * 1.1, 0.02, -1.5 + z * 0.6), 0xb0864f, 0.05)));
+      add(new THREE.CylinderGeometry(0.5, 0.42, 0.7, 20), 0x2b6fd6, V(0.1, 2.45, -1.5)); // bucket
+      add(new THREE.CylinderGeometry(0.46, 0.46, 0.02, 20), 0x7fb8ff, V(0.1, 2.75, -1.5), 0.8); // the water
+      add(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 12), 0xd9e6f2, V(0.12, 3.1, -1.15)); // jug
+    } else if (k === "clap") {
+      CLAPPERS.forEach(([x, z]) => {
+        add(new THREE.CylinderGeometry(0.3, 0.38, 2.2, 12), 0x8b969f, V(x, 1.2, z));
+        add(new THREE.SphereGeometry(0.34, 12, 10), 0xc7ced5, V(x, 2.55, z));
+      });
     } else if (k === "steps") {
       add(new THREE.BoxGeometry(3, 0.1, 3), 0x9a6b3c, V(0, 0.05, -0.3));
       for (let z = -1.6; z <= 1.0; z += 0.5) line(V(-1.5, 0.11, z), V(1.5, 0.11, z), 0x6b4626);
@@ -1669,7 +1795,17 @@
     } else if (k === "saw") {
       plume(V(0.25, 2.45, -1.45), V(0, 0.4, 1), 0.8, 0.35); // the cut throws sound and dust back and up
       hot(V(0.35, 2.62, -1.3), 0.2); // the motor
-    } else if (k === "steps") [-0.22, 0.22].forEach((x) => hot(V(x, 0.12, 0.05), 0.2));
+    } else if (k === "hit") {
+      hot(V(0.05, 2.78, -1.4), 0.25);
+      plume(V(0.05, 2.78, -1.4), V(0, 0.5, 0.8), 0.7, 0.4);
+    } else if (k === "car") {
+      plume(V(0.9, 0.9, -5.4), V(0, 0, 1), 1.2, 0.35); // exhaust stream, toward the rear
+      hot(V(0, 2.4, -19), 0.6); // the engine at the front
+    } else if (k === "water") {
+      hot(V(0.1, 2.78, -1.5), 0.25);
+      plume(V(0.1, 2.78, -1.5), V(0, 0.4, 0.5), 0.55, 0.45);
+    } else if (k === "clap") CLAPPERS.forEach(([x, z]) => hot(V(x, 3.1, z), 0.2));
+    else if (k === "steps") [-0.22, 0.22].forEach((x) => hot(V(x, 0.12, 0.05), 0.2));
     else if (k === "door") {
       hot(V(0.3, 3.2, -1.55), 0.16); // latch
       plume(V(-1.05, 3.45, -1.55), V(0, 0, 1), 0.7, 0.9); // the panel
@@ -2072,9 +2208,22 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
     $("mgPosture").disabled = true;
     $("mgTechnique").innerHTML = s.t.map((x, i) => '<option value="' + i + '">' + x[0] + "</option>").join("");
     pick = {};
+    // Large scenes (a car, a crowd) frame the camera on the whole scene; the next ordinary source puts it back
+    if (tar) {
+      if (s.frame) {
+        tar.set(0, s.frame[0], s.frame[1]);
+        orb.r = s.frame[2];
+        framed = true;
+      } else if (framed) {
+        tar.set(0, 2.5, -0.25);
+        orb.r = 14;
+        framed = false;
+      }
+    }
     slots();
     build();
   }
+  let framed = false;
   function slots() {
     const t0 = source().t[+$("mgTechnique").value];
     if (isKit(t0)) kitRefresh();

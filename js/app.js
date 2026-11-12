@@ -825,9 +825,8 @@ function soundAt(p, opt) {
         const ca = dh > 0.01 ? -(dv * ca0 + du * sa0) / d3 : 1;
         if (opt.xy) {
           const th = Math.acos(Math.max(-1, Math.min(1, ca))),
-            g1 = 0.5 + 0.5 * Math.cos(th - 45 * DEG),
-            g2 = 0.5 + 0.5 * Math.cos(th + 45 * DEG);
-          pg = (g1 * g1 + g2 * g2) / 2;
+            g1 = 0.5 + 0.5 * Math.cos(th - 45 * DEG); // th is unsigned (0 to 180°), so this is always the louder of the two capsules
+          pg = g1 * g1; // XY pair: a source is heard at the level of the capsule that faces it more (not the average of both, which understates bleed by up to 2 dB)
         } else {
           const g = Math.abs(opt.a + (1 - opt.a) * ca);
           pg = g * g;
@@ -2166,7 +2165,7 @@ function coverAt(p) {
       M = MODELS[m.model],
       a = M.pat === "xy" ? 1 : (PATS[m.pat] ?? 0.5);
     const ca = ((p.v - q.v) * Math.cos(ang) + (p.u - q.u) * Math.sin(ang)) / d,
-      g = Math.abs(a + (1 - a) * ca) / d;
+      g = (M.pat === "xy" ? 0.5 + 0.5 * Math.cos(Math.acos(Math.max(-1, Math.min(1, ca))) - 45 * DEG) : Math.abs(a + (1 - a) * ca)) / d; // XY: the louder of its two cardioid capsules
     if (g > best) {
       second = best;
       best = g;

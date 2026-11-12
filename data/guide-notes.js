@@ -30,6 +30,13 @@ const GUIDE_REFS = {
   krotos: ["Krotos: Foley recording techniques", "https://krotos.studio/blog/foley-recording"],
   premium: ["PremiumBeat: Recording Foley and sound effects, the fundamentals", "https://www.premiumbeat.com/blog/recording-foley-and-sound-effects-the-fundamentals/"],
   violet: ["Violet Design: How to record your own sound effects", "https://violetrecording.com/how-to-record-sound-effects/"],
+  mcv: ["MCV: The Audio Guys on recording real car sounds", "https://mcvuk.com/development-news/audio-special-recording-real-car-sounds/"],
+  dvinfoCar: ["DVinfo: Recommend a mic for recording exhaust and engine sounds (forum)", "https://www.dvinfo.net/forum/all-things-audio/509143-recommend-amic-recording-exhaust-engine-sounds.html"],
+  fluids: ["Designing Sound: Recording fluids, foley magic", "https://designingsound.org/2018/08/14/recording-fluids-foley-magic/"],
+  boombox: ["Boom Box Post: Top 4 tips for recording water sound effects", "https://boombox-post.squarespace.com/blog/2016/11/4/top-4-tips-for-recording-water-sound-effects"],
+  crowd: ["Pro Sound Web: 3 techniques for miking an audience", "https://www.prosoundweb.com/3-techniques-for-miking-an-audience/"],
+  crowd2: ["Pro Sound Web: In the studio, tips for recording an audience", "https://www.prosoundweb.com/in-the-studio-tips-for-recording-an-audience/"],
+  impacts: ["Violet Design: How to make impact sounds", "https://violetrecording.com/how-to-make-impact-sounds/"],
   shure: ["Shure: Making an independent recording (points to Shure's Microphone Techniques for Recording booklet)", "https://www.shure.com/en-US/insights/making-an-independent-recording-part-2"],
 };
 // Shared processing blocks, so the same idea reads the same everywhere.
@@ -516,5 +523,108 @@ const GUIDE_NOTES = {
       live: [],
     },
     refs: [GUIDE_REFS.krotos, GUIDE_REFS.violet],
+  },
+  "Impacts (hammer on metal)": {
+    source: [
+      "The sound is the strike itself (a sharp, broadband click), the metal's ring after it, and the room's reflection of both.",
+      "Close mics give the click and the ring; a stereo pair back gives the space. Layering several recordings, from light taps to heavy blows, is the usual way to build a bigger hit.",
+      "Vary the strike force and the metal's thickness between takes instead of repeating one thud.",
+      "Peaks are sudden and loud; no source gives a peak level for these, so the planner estimates about 105 dB at 1 m. Leave generous headroom and use a recorder's safety track if it has one.",
+      "Safety: eye and ear protection for the person striking, a clear area for flying chips, and a stand clear of the hammer's swing.",
+    ],
+    acc: [
+      { item: "Foam windscreen", level: "suggested", why: "Hot scale, chips and the air blast of a hard hit reach a mic close in." },
+      { item: "Inline pad (−20 dB)", level: "suggested", why: "A condenser close to a hard hit can reach the preamp's limit.", cond: true },
+      { item: "Hearing protection", level: "needed", why: "Repeated hard strikes in one spot are loud for everyone in the room." },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("60–80 Hz", "Removes bench thumps without touching the strike."),
+        CUT("the ring is too long or too pitched", "find the ring (often 1–4 kHz)", "−3 to −6 dB", "narrow (Q 4–8)", "A narrow cut shortens a ringing overtone and leaves the click."),
+        BOOST("the strike lacks weight", "100–200 Hz", "+2 to +4 dB", "wide (Q about 1)", "Gives a thin metal tap some body."),
+        FIX("the first peak clips or jumps out", "Limiter", [["Ceiling", "−1 dBFS"], ["Release", "50–100 ms"]], "Catches the transient; better: lower the gain first."),
+        GP.verb("small hall or workshop", "10–30 ms", "Puts a close, dry hit into a space."),
+      ],
+      live: [],
+    },
+    mics: [
+      {
+        match: "^Perspective pair",
+        rec: [{ kind: "Level", set: [["Blend", "with the close mic, to match the shot: more pair for a wide shot"]], why: "The pair is the hit in its room; the close mic is the detail." }],
+      },
+    ],
+    refs: [GUIDE_REFS.impacts, GUIDE_REFS.violet],
+  },
+  "Car engine and exhaust": {
+    source: [
+      "Two sources: the exhaust note from the tailpipe and the engine and intake sound from the front.",
+      "Never place a mic in the exhaust stream: the result is windy and fluttery, and the heat and soot can damage the mic. Off-axis at about 45–90° to the pipe's direction is standard.",
+      "A second mic farther back, or at the rear window, adds the pipe's howl and the body of the car. Test at idle and under load: they sound different.",
+      "Wind protection is essential, especially outdoors or on a track.",
+      "No source gives a peak level for these; the planner estimates about 95 dB at 1 m for an exhaust. Distances in published guides are anecdotal, so test a few.",
+      "Safety: exhaust gas is poisonous, so run the engine outdoors or with ventilation; keep people, cables and stands out of the exhaust's heat and away from moving parts.",
+    ],
+    acc: [
+      { item: "Foam windscreen", level: "needed", why: "Wind and the exhaust's air blast on the capsule; use a windscreen and, outdoors, a furry cover." },
+      { item: "Inline pad (−20 dB)", level: "suggested", why: "Revving close to a condenser can reach the preamp's limit.", cond: true },
+      { item: "Shock mount", level: "suggested", why: "The car and the ground shake the stand.", cond: true },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("30–50 Hz", "Removes wind rumble and ground vibration, keeping the engine's low note."),
+        CUT("the exhaust note sounds boomy", "100–200 Hz", "−2 to −4 dB", "wide (Q about 1)", "Pipes and the car's body resonate there."),
+        CUT("it sounds harsh or rasping", "2–4 kHz", "−2 to −3 dB", "medium (Q 1–2)", "Close to the pipe the rasp is exaggerated."),
+        BOOST("the engine sounds dull", "2–5 kHz", "+1 to +3 dB", "medium (Q 1–2)", "Intake and mechanical detail."),
+        GP.comp("3:1", "10–20 ms", "100–200 ms", "3–6 dB", "Revs swing the level widely.", "revs make the level jump between idle and full throttle"),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.mcv, GUIDE_REFS.dvinfoCar],
+  },
+  "Water pouring": {
+    source: [
+      "The sound is where the water hits something: the bucket, the surface, the splash. Pouring from a height and onto a surface give different sounds, so decide the perspective before recording.",
+      "A close mic (about 1–2 ft) gives the texture; a room mic farther back gives the space around it.",
+      "Splashes reach a mic: protect it with a windscreen or a cover, and put plastic then towels on the floor (the towels stop the plastic making its own noise).",
+      "Sources suggest a shotgun or a tight cardioid as a first choice for isolating the sound, with a hydrophone for underwater perspective (not covered here).",
+      "No source gives a level for pouring; the planner estimates about 70 dB at 1 m.",
+    ],
+    acc: [
+      { item: "Foam windscreen", level: "needed", why: "Splashes and air from a pour reach a mic close in." },
+      { item: "Shock mount", level: "suggested", why: "Pouring jolts the bucket and table.", cond: true },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("80–120 Hz", "Removes handling and table thumps below the water's range."),
+        BOOST("the water sounds dull or muffled", "5–10 kHz", "+1 to +3 dB", "wide (Q about 1)", "The splash's sparkle."),
+        CUT("it sounds boomy or hollow", "150–300 Hz", "−2 to −4 dB", "wide (Q about 1)", "The bucket resonates there."),
+        FIX("noise between pours is distracting", "Noise reduction", [["Amount", "light, a few dB"], ["Note", "heavy settings smear the transient detail that makes water sound like water"]], "Use only if there is hum, fan noise or hiss; be conservative."),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.fluids, GUIDE_REFS.boombox],
+  },
+  "Applause (small group)": {
+    source: [
+      "Applause is many small impacts at once, so it needs height and distance: the higher the mics are above the group, the better, unless a low ceiling makes ceiling reflections a problem.",
+      "Keep the mics away from the PA, or the recording gets echo-heavy.",
+      "Stereo pairs (X/Y, ORTF, Blumlein) can give poor results with crowds; spaced mics aimed down at the group are a common choice. A shotgun can isolate one section.",
+      "Applause peaks can overload a mic and a preamp: leave headroom, or limit the peaks.",
+      "The planner estimates about 85 dB at 1 m for a small group applauding; the real level depends on the group.",
+    ],
+    acc: [
+      { item: "Boom stand", level: "needed", why: "The mics must be high above the group; a short stand will not reach." },
+      { item: "Inline pad (−20 dB)", level: "suggested", why: "Close to a loud group, condensers can reach the preamp's limit.", cond: true },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("100–150 Hz", "Removes rumble and low room noise; applause has no energy there."),
+        CUT("it sounds harsh or hissy", "4–8 kHz", "−1 to −3 dB", "wide (Q about 1)", "Close claps and hand slaps concentrate energy in this range."),
+        FIX("sudden spikes clip or jump out", "Limiter", [["Ceiling", "−1 dBFS"], ["Release", "50–100 ms"]], "Gentle compression or limiting prevents overload on peaks."),
+        GP.verb("hall", "20–40 ms", "Puts a dry crowd into a room."),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.crowd, GUIDE_REFS.crowd2],
   },
 };

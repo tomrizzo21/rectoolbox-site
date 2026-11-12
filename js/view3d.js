@@ -9,6 +9,18 @@
   let sph = { r: 230, th: -0.9, ph: 0.95 };
   const cv = $("c3");
   const P3 = (v, u, y) => new THREE.Vector3(VMAX - v, y || 0, u);
+  const CABLE_Y = 0.12; // cables lie on the floor in 3D, hand-drawn or not (docs/CABLE_ROUTING_PLAN.md)
+  const cableLine = (pts, color, kind) => {
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts.map((z) => P3(z.v, z.u, CABLE_Y))),
+      new THREE.LineBasicMaterial({ color }),
+    );
+    line.userData.cable = kind;
+    scene.add(line);
+  };
+  window.__spectra3d = () => (scene ? scene.children.filter((o) => o.name === "groupSpectrum").length : 0); // for tests
+  // For tests: every cable line's point heights.
+  window.__cable3d = () => (scene ? scene.children.filter((o) => o.userData.cable).map((o) => ({ kind: o.userData.cable, ys: [...o.geometry.attributes.position.array].filter((_, i) => i % 3 === 1) })) : []);
   function css(n) {
     return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#888";
   }
@@ -100,6 +112,29 @@
         }
       }
     }
+    // Group spectra (View › Group spectra): a small bar chart floating above each section, always facing the camera.
+    if ($("tSpec").checked)
+      for (const G of st.groups) {
+        const K = KIND[G.kind],
+          d = K.bp.map(dB),
+          mx = Math.max(...d),
+          c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 48;
+        const x = c.getContext("2d");
+        x.fillStyle = "rgba(0,0,0,0.35)";
+        x.fillRect(0, 0, 128, 48);
+        d.forEach((v, i) => {
+          const hgt = Math.max(2, Math.min(1, (v - mx + 40) / 40) * 40);
+          x.fillStyle = bandColor(i);
+          x.fillRect(4 + i * 15, 44 - hgt, 12, hgt);
+        });
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+        sp.scale.set(16, 6, 1);
+        sp.position.copy(P3(G.v, G.u, (K.h || 5) + 9));
+        sp.name = "groupSpectrum";
+        scene.add(sp);
+      }
     if ($("s3mic").checked) {
       const res = solve();
       for (const m of st.mics) {
@@ -110,14 +145,12 @@
         const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), mat(0x4b3fb0, 1));
         head.position.copy(P3(q.v, q.u, m.h));
         scene.add(head);
-        const r = res.mic[m.id],
-          path = (r.pts || [q, r.t === "desk" ? st.desk : st.boxes[r.t]]).map((z) => P3(z.v, z.u, 0.12));
-        scene.add(
-          new THREE.Line(
-            new THREE.BufferGeometry().setFromPoints(path),
-            new THREE.LineBasicMaterial({ color: r.cabs.some((c) => !c) ? 0xc0392b : 0x333333 }),
-          ),
-        );
+        const r = res.mic[m.id];
+        cableLine(r.pts || [q, r.t === "desk" ? st.desk : st.boxes[r.t]], r.cabs.some((c) => !c) ? 0xc0392b : 0x333333, "mic");
+      }
+      for (const id in res.boxUp) {
+        const u = res.boxUp[id];
+        if (u && st.boxes[id].on) cableLine(u.pts || [st.boxes[id], u.u === "desk" ? st.desk : st.boxes[u.u]], u.fits ? 0xb03a2e : 0xc0392b, "trunk");
       }
       for (const b of [...Object.values(st.boxes).filter((b) => b.on), st.desk]) {
         const bx = new THREE.Mesh(
@@ -423,6 +456,8 @@
     $("f").style.display = three ? "none" : "";
     $("b3d").setAttribute("aria-pressed", three);
     $("b2d").setAttribute("aria-pressed", !three);
+    $("view3dOpts").hidden = !three; // the 3D options live in the View panel, shown while in 3D
+    $("view3dNote").hidden = three;
     if (three) {
       if (!init()) {
         show(false);
@@ -441,6 +476,14 @@
   $("s3p").oninput = () => queueSlices(80);
   $("tPeople").addEventListener("change", () => build()); // one People switch for 2D and 3D
   $("s3mic").onchange = () => build();
+  $("tSpec").addEventListener("change", () => !$("v3").hidden && build());
+  window.addEventListener("rt:themechange", () => !$("v3").hidden && build()); // background and floor colours
+  $("s3help").onclick = () => {
+    const h = $("s3hints"),
+      open = h.hidden;
+    h.hidden = !open;
+    $("s3help").setAttribute("aria-expanded", String(open));
+  };
   $("s3vol").onchange = () => queueSlices();
   $("heat").addEventListener("change", () => {
     sliceDirty = true;

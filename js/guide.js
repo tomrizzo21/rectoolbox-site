@@ -1280,6 +1280,55 @@
         }),
     );
   }
+  /* Sound source, accessories and processing for the instrument (data/guide-notes.js; docs/MIC_TECHNIQUES_NOTES_PLAN.md).
+     Open sections and the Recording / Live choice are remembered for the session. */
+  let notesCtx = "rec";
+  const notesOpen = { src: true, acc: false, proc: false };
+  const isCond = (k) => /DC/.test((MODELS[k] || {}).type || "");
+  function notes(name, chosen) {
+    const N = typeof GUIDE_NOTES === "object" && GUIDE_NOTES[name],
+      box = $("mgNotes");
+    if (!box) return;
+    if (!N) {
+      box.innerHTML = "";
+      return;
+    }
+    const e = (v) => (typeof esc === "function" ? esc(v) : String(v)),
+      cond = chosen.some(isCond),
+      draft = GUIDE_NOTES_STATUS === "draft" ? ' <span class="mgDraft" title="Written from the references below; not reviewed yet">draft</span>' : "";
+    const acc = N.acc
+      .map((a) => {
+        const off = a.cond && !cond,
+          lvl = off ? "only with a condenser" : a.out ? "needed outdoors" : a.level;
+        return `<li class="${off ? "m" : ""}"><b>${e(a.item)}</b> <span class="mgLvl ${off ? "" : a.level}">${lvl}</span><br><span class="m">${e(a.why)}</span></li>`;
+      })
+      .join("");
+    const card = (p) =>
+      `<div class="mgProc"><b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
+    const live = N.proc.live || [],
+      proc =
+        notesCtx === "rec"
+          ? N.proc.rec.map(card).join("")
+          : `<p class="m">${live.length ? "Live sound: as for recording, with these changes." : "Live sound: the recording starting points work; raise the high-pass a little if the PA rumbles or feeds back."}</p>${live.map(card).join("")}`;
+    const sec = (id, title, body) => `<details data-notes="${id}"${notesOpen[id] ? " open" : ""}><summary>${title}</summary>${body}</details>`;
+    box.innerHTML =
+      sec("src", "Where the sound comes from" + draft, `<ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>`) +
+      sec("acc", "Accessories", `<ul class="mgAcc">${acc}</ul><p class="m">Suggested accessories for the sections in your layout are also listed in Inventory › Accessories.</p>`) +
+      sec(
+        "proc",
+        "Processing starting points",
+        `<div class="row" role="radiogroup" aria-label="Processing for"><label><input type="radio" name="mgCtx" value="rec"${notesCtx === "rec" ? " checked" : ""}> Recording / mix</label><label><input type="radio" name="mgCtx" value="live"${notesCtx === "live" ? " checked" : ""}> Live sound</label></div><p class="m">Plugin-neutral starting points: use them in any DAW plugin or outboard unit and adjust by ear.</p>${proc}`,
+      ) +
+      `<div class="mgRefs m">Sources: ${N.refs.map(([t, u]) => `<a href="${e(u)}" target="_blank" rel="noopener">${e(t)}</a>`).join(" · ")}</div>`;
+    box.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => (notesOpen[d.dataset.notes] = d.open)));
+    box.querySelectorAll('input[name="mgCtx"]').forEach(
+      (r) =>
+        (r.onchange = () => {
+          notesCtx = r.value;
+          notes(name, chosen);
+        }),
+    );
+  }
   function options() {
     const old = wantedGuideInstrument || $("mgInstrument").value;
     $("mgInstrument").innerHTML = G.map((x) => "<option>" + x.n + "</option>").join("");
@@ -1301,6 +1350,7 @@
     const t = source().t[+$("mgTechnique").value],
       chosen = guideChoices(t);
     $("mgAdvice").textContent = t[1];
+    notes(source().n, chosen);
     const di = t.di
       ? '<div class="mgSlot"><b>Direct input</b><div class="m">' +
         t.di +
@@ -1351,6 +1401,7 @@
           (e.onchange = () => {
             pick[+e.dataset.mg] = e.value;
             build();
+            notes(source().n, guideChoices(source().t[+$("mgTechnique").value])); // condenser-only accessories follow the mic
           }),
       );
   }

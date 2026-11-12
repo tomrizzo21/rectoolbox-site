@@ -22,6 +22,7 @@ const account = (() => {
     applying = false,
     recovering = false,
     lastSync = null;
+  const watchers = []; // onChange(fn): told the user (or null) whenever the session is checked; js/team.js uses it
 
   const usable = () => !!(cfg.url && cfg.key) && (!!window.__fakeSupabase || /^https?:$/.test(location.protocol));
   const here = () => location.origin + location.pathname;
@@ -57,6 +58,7 @@ const account = (() => {
     if (!user) {
       profile = null;
       render();
+      watchers.forEach((fn) => fn(null));
       return;
     }
     if (changed || event === "SIGNED_IN") {
@@ -64,6 +66,7 @@ const account = (() => {
       await pullSettings();
     }
     render();
+    watchers.forEach((fn) => fn(user));
   }
   async function loadProfile() {
     const { data } = await client.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
@@ -325,6 +328,6 @@ const account = (() => {
         }),
       );
   }
-  return { init, open, close, client: getClient, get user() { return user; }, pushSoon, _push: push };
+  return { init, open, close, client: getClient, get user() { return user; }, pushSoon, _push: push, onChange: (fn) => watchers.push(fn) };
 })();
 account.init();

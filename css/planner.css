@@ -15,7 +15,7 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="isu"]) {
     color-scheme: dark;
     --bg: #151513;
     --ink: #ecebe6;
@@ -28,6 +28,22 @@
     --ok: #7bd88f;
     --mic: #a99cff;
   }
+}
+/* Illinois State University: ISU red (#CE1126) with white and black. Colours only, no logo or wordmark. Warnings use
+   orange here so they don't read as the accent red. */
+:root[data-theme="isu"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --ink: #141414;
+  --mute: #555152;
+  --rule: #e2cdd0;
+  --card: #ffffff;
+  --red: #8c0d1c;
+  --field: #faf4f4;
+  --line2: #b8a2a5;
+  --warn: #b85c00;
+  --ok: #2e7d32;
+  --mic: #ce1126;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -1147,39 +1163,29 @@ th {
   }
 }
 .hud3 {
+  /* Bottom-left, clear of the canvas tool groups along the top; the hints open above the buttons. */
   position: absolute;
   left: 8px;
-  top: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: flex-start;
+  max-width: 420px;
+  font-size: 12px;
+}
+.hud3 > button {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  opacity: 0.95;
+}
+#s3hints {
+  order: -1;
+  flex-basis: 100%;
   background: var(--card);
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 6px 10px;
-  max-width: 420px;
-  font-size: 12px;
-  opacity: 0.95;
-}
-.hud3 > summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--ink);
-  list-style: none;
-}
-.hud3 > summary::-webkit-details-marker {
-  display: none;
-}
-.hud3 > summary::before {
-  content: "›";
-  display: inline-block;
-  margin-right: 6px;
-}
-.hud3[open] > summary::before {
-  transform: rotate(90deg);
-}
-.hud3:not([open]) {
-  padding-bottom: 6px;
-}
-.hud3 .row > span:first-child {
-  min-width: 70px;
 }
 .mgSearchWrap {
   position: relative;
@@ -1929,6 +1935,29 @@ kbd {
 .acctDanger {
   margin-top: 12px;
 }
+.acctTeam {
+  margin-top: 12px;
+  border-top: 1px solid var(--line2);
+  padding-top: 4px;
+}
+.acctTeam h3 {
+  margin: 6px 0 2px;
+  font-size: 1em;
+}
+.teamCard,
+.teamInvite {
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 6px 0;
+}
+.teamInvite {
+  border-color: var(--mic);
+}
+.teamList {
+  margin: 4px 0;
+  padding-left: 18px;
+}
 button.danger {
   border-color: var(--warn);
   color: var(--warn);
@@ -1968,4 +1997,154 @@ button.danger {
 }
 .fileBtns button {
   margin-left: 4px;
+}
+.wireBend {
+  fill: var(--card);
+  stroke: var(--mic);
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+/* Drawing cables by hand (js/wiredraw.js) */
+.wireDraft {
+  fill: none;
+  stroke: var(--mic);
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.wireDraft.bad {
+  stroke: var(--warn);
+}
+.wirePlug {
+  fill: var(--mic);
+  stroke: var(--card);
+  cursor: crosshair;
+}
+.wirePlug:hover {
+  fill: var(--red);
+}
+.wirePlugLead {
+  stroke: var(--mic);
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+#gWireUI .wireBend {
+  pointer-events: none;
+}
+body.wireMode #f,
+body.wireDrawing #f {
+  cursor: crosshair;
+}
+.wireTip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 5;
+}
+.wireTip.bad {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+/* Editing a cable (js/wiredraw.js, phase 3) */
+.wirePicked {
+  fill: none;
+  stroke: var(--mic);
+  stroke-opacity: 0.28;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.wireHandle {
+  fill: var(--card);
+  stroke: var(--mic);
+  cursor: move;
+}
+.wireMid {
+  fill: var(--mic);
+  fill-opacity: 0.55;
+  stroke: var(--card);
+  cursor: copy;
+}
+.wireEnd {
+  fill: var(--red);
+  stroke: var(--card);
+  cursor: crosshair;
+}
+.wireHandle:hover,
+.wireMid:hover,
+.wireEnd:hover {
+  stroke: var(--red);
+}
+/* Mic techniques notes (data/guide-notes.js) */
+.mgNotes details {
+  margin: 6px 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--card);
+}
+.mgNotes summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.mgNotes ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.mgNotes li {
+  margin: 3px 0;
+}
+.mgAcc {
+  list-style: none;
+  padding-left: 0 !important;
+}
+.mgLvl {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+}
+.mgLvl.needed {
+  background: var(--mic);
+  border-color: var(--mic);
+  color: #fff;
+}
+.mgDraft {
+  font-size: 10px;
+  font-weight: 400;
+  padding: 0 5px;
+  border: 1px dashed var(--mute);
+  border-radius: 6px;
+  color: var(--mute);
+}
+.mgProc {
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--mic);
+  background: var(--field);
+}
+.mgProc table {
+  width: auto;
+  border-collapse: collapse;
+  margin: 2px 0;
+}
+.mgProc td {
+  padding: 1px 14px 1px 0;
+  border: 0;
+  vertical-align: top;
+}
+.mgProc td:first-child {
+  color: var(--mute);
+  white-space: nowrap;
+}
+.mgRefs {
+  margin-top: 4px;
+  font-size: 11px;
+}
+.accSug td {
+  vertical-align: top;
 }

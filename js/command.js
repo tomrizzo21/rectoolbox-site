@@ -122,6 +122,26 @@ function buildCommands() {
     }),
   );
   add("Options", "Edit", () => openOptions(), { keys: "settings preferences" });
+  // Mic techniques notes (js/guide.js): open the guide and unfold the section
+  for (const [id, label, keys] of [
+    ["src", "Where the sound comes from", "sound source radiation bell body instrument notes"],
+    ["acc", "Accessories for this instrument", "pad windscreen pop filter clip shock mount notes"],
+    ["proc", "Processing starting points", "eq compressor gate de-esser reverb plugin settings mix live notes"],
+  ])
+    add(
+      label,
+      "Mic techniques",
+      () => {
+        if (TOOL !== "guide") switchTool("guide");
+        requestAnimationFrame(() => {
+          const d = document.querySelector(`#mgNotes details[data-notes="${id}"]`);
+          if (!d) return;
+          d.open = true;
+          d.scrollIntoView({ block: "start" });
+        });
+      },
+      { keys },
+    );
   return items;
 }
 function scoreCommand(it, words, q) {

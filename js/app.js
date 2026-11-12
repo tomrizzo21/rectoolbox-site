@@ -134,6 +134,7 @@ function inv() {
   ])
     if (!I.acc.some((a) => a.name === x.name)) I.acc.push(x);
   I.custom = I.custom || {};
+  I.micOwned = I.micOwned || {}; // owned counts you changed from the inventory sheet's (built-in models)
   return I;
 }
 const avail = (k) => (MODELS[k] ? MODELS[k].n : 0) + ((st && st.inv && st.inv.micAdd[k]) || 0);
@@ -144,6 +145,44 @@ const stockAvail = () => {
 };
 function mergeCustom() {
   for (const k in inv().custom) MODELS[k] = inv().custom[k];
+}
+/* Owned mic counts: the inventory sheet's, unless changed in Inventory › Mics (kept with the layout, or with the team's
+   gear when signed in to a team: js/team.js). Custom models keep their own count. */
+function applyMicOwned() {
+  const I = inv();
+  for (const k in OWNED0) if (MODELS[k] && !MODELS[k].custom) MODELS[k].n = I.micOwned[k] ?? OWNED0[k];
+}
+function setMicOwned(k, n) {
+  if (!MODELS[k]) return;
+  MODELS[k].n = n;
+  if (!MODELS[k].custom) inv().micOwned[k] = n;
+}
+/* "Owned gear": what you have, as opposed to what a layout plans to buy. js/team.js shares it with a team. */
+function ownedGear() {
+  const I = inv(),
+    g = { mics: {}, cables: {}, stands: {}, acc: {}, custom: {} };
+  for (const k in MODELS) g.mics[k] = MODELS[k].n || 0;
+  for (const L of LENS) g.cables[L] = st.stock[L] || 0;
+  for (const k in I.standOwned) g.stands[k] = I.standOwned[k] ?? null;
+  I.acc.forEach((a) => (g.acc[a.name] = a.owned ?? null));
+  for (const k in I.custom) {
+    const { n, ...m } = I.custom[k];
+    g.custom[k] = m;
+  }
+  return g;
+}
+function applyOwnedGear(g) {
+  const I = inv();
+  for (const k in g.custom || {}) I.custom[k] = { ...g.custom[k], n: (I.custom[k] && I.custom[k].n) || 0, custom: 1 };
+  mergeCustom();
+  for (const k in g.mics || {}) setMicOwned(k, Math.max(0, +g.mics[k] || 0));
+  for (const L in g.cables || {}) st.stock[L] = Math.max(0, +g.cables[L] || 0);
+  for (const k in g.stands || {}) I.standOwned[k] = g.stands[k];
+  for (const name in g.acc || {}) {
+    const a = I.acc.find((x) => x.name === name);
+    if (a) a.owned = g.acc[name];
+    else I.acc.push({ name, owned: g.acc[name], add: 0, user: 1 });
+  }
 }
 const PATS = { omni: 1, "wide cardioid": 0.7, cardioid: 0.5, supercardioid: 0.37, hypercardioid: 0.25, "figure-8": 0 };
 const DEF_MICS = [
@@ -562,10 +601,15 @@ function save() {
   }
   store.setRaw("rt-fh-planner-v4", j);
   if (typeof files === "object") files.title(); // "•" in the title when the open layout has unsaved changes
+  if (typeof team === "object") team.changed(); // owned gear shared with a team uploads
 }
 function applyLayout(json) {
   st = upgrade(JSON.parse(json));
   st.risers = st.risers || [];
+  inv();
+  mergeCustom();
+  applyMicOwned();
+  if (typeof team === "object") team.afterLayout(); // a team's gear wins over the gear saved in the layout
   sel = null;
   lastSavedJSON = json;
   applyBg();
@@ -709,6 +753,7 @@ function upgrade(o) {
       }
   }
   for (const g of o.groups || []) if (g.lock === undefined) g.lock = null;
+  for (const x of [...(o.mics || []), ...Object.values(o.boxes || {})]) if ("wire" in x) (x.wire = cleanWire(x.wire)) || delete x.wire;
   o.inv = o.inv || {};
   o.stock = o.stock || { ...STOCK0 };
   for (const L of LENS) if (o.stock[L] == null) o.stock[L] = 0;
@@ -1172,6 +1217,25 @@ function hitGroups(a, b) {
   }
   return n;
 }
+/* Hand-drawn cables (docs/CABLE_ROUTING_PLAN.md): a mic's m.wire or a box's b.wire = { to, via: [{v,u}…] }.
+   The ends are the mic/box and its target, so they follow when things move; the pivots in via stay put. Smart route
+   never changes them; the solver still picks the XLR pieces and checks stock and channel limits. */
+function wireTarget(w, from) {
+  if (!w || !Array.isArray(w.via)) return null;
+  if (w.to === "desk") return st.desk;
+  const b = st.boxes[w.to];
+  return b && b.on && b !== from ? b : null;
+}
+function polyLen(pts) {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
+  return L;
+}
+function cleanWire(w) {
+  if (!w || typeof w !== "object" || typeof w.to !== "string" || !Array.isArray(w.via)) return undefined;
+  const via = w.via.filter((p) => p && Number.isFinite(p.v) && Number.isFinite(p.u)).map((p) => ({ v: +p.v, u: +p.u }));
+  return { to: w.to, via };
+}
 function solve(o) {
   o = o || {};
   const clean = (o.clean ?? st.cleanAlloc) && (o.buy ?? st.buy),
@@ -1201,6 +1265,16 @@ function solve(o) {
       res.boxUp[id] = null;
       continue;
     }
+    const wt = wireTarget(b.wire, b);
+    if (wt) {
+      const pts = [b, ...b.wire.via, wt],
+        need = Math.round(polyLen(pts) * (b.wire.via.length ? 1.05 : 1.1) + 2), // same slack as smart route's runs
+        fits = need <= b.trunk;
+      res.boxUp[id] = { u: b.wire.to, need, fits, pts, wired: true };
+      if (!fits) res.warn.push(`${esc(b.name)}: its ${b.trunk} ft trunk can't reach along the hand-drawn path (${need} ft needed)`);
+      continue;
+    }
+    if (b.wire) res.warn.push(`${esc(b.name)}: its hand-drawn trunk goes to a box that's switched off; routed automatically`);
     const opts = b.up === "auto" ? b.ups : [b.up];
     let best = null;
     for (const u of opts) {
@@ -1225,6 +1299,12 @@ function solve(o) {
     const p = micPos(m),
       ch = MODELS[m.model].ch || 1,
       list = [];
+    const wt = wireTarget(m.wire);
+    if (wt) {
+      const pts = [p, ...m.wire.via, wt];
+      // Same slack as smart route: 8 % on a path with bends, 12 % on a straight run.
+      return [{ t: m.wire.to, need: Math.round(polyLen(pts) * (m.wire.via.length ? 1.08 : 1.12) + m.h + 2), ch, x: 0, pts, wired: true }];
+    }
     for (const t of m.route === "auto" ? ["desk", "b24", "b20", "eth"] : [m.route]) {
       if (t !== "desk" && !B[t].on) continue;
       if (m.route === "auto" && t !== "desk" && !boxOK(t)) continue;
@@ -1275,7 +1355,7 @@ function solve(o) {
           }
         }
         if (!done) {
-          const c = L.find((c) => c.t === "desk" || load[c.t] + c.ch <= B[c.t].cap) || {
+          const c = (L[0] && L[0].wired ? L[0] : null) || L.find((c) => c.t === "desk" || load[c.t] + c.ch <= B[c.t].cap) || {
             t: "desk",
             need: L[0] ? L[0].need : 0,
             ch: MODELS[m.model].ch || 1,
@@ -1295,7 +1375,7 @@ function solve(o) {
               pieces++;
             }),
         );
-        mic[m.id] = { t: done.c.t, need: done.c.need, cabs: done.got, pts: done.c.pts };
+        mic[m.id] = { t: done.c.t, need: done.c.need, cabs: done.got, pts: done.c.pts, wired: !!done.c.wired };
       }
       const sc = fail * 1e6 + (clean ? bought * 150 + pieces * 100 + len : bought * 5000 + len);
       if (!bestRun || sc < bestRun.sc) bestRun = { sc, stock, used, mic, load, fail, len, pieces };
@@ -1328,6 +1408,9 @@ function solve(o) {
     if (B[id].on && load_[id] > B[id].cap)
       res.warn.push(`${B[id].name}: ${load_[id]} channels on a ${B[id].cap}-channel box`);
   res.load = load_;
+  for (const m of st.mics)
+    if (m.wire && !wireTarget(m.wire))
+      res.warn.push(`${esc(micName(m))}: its hand-drawn cable went to a box that's switched off; routed automatically`);
   for (const m of st.mics) {
     const r = res.mic[m.id];
     if (r.cabs.some((c) => !c))
@@ -1432,6 +1515,10 @@ function smart(mode) {
   st.cleanAlloc = mode === "clean";
   st.mics.forEach((m) => (m.route = "auto"));
   for (const id in st.boxes) st.boxes[id].up = "auto";
+  // Hand-drawn cables (docs/CABLE_ROUTING_PLAN.md) stay unless asked; their ends still follow moved boxes.
+  const drawn = [...st.mics, ...Object.values(st.boxes)].filter((o) => o.wire),
+    rewire = $("oRewire").checked;
+  if (rewire) drawn.forEach((o) => delete o.wire);
   const keys = ["b24", "b20", "eth"],
     desk0 = { ...st.desk };
   const score = (r) => {
@@ -1533,7 +1620,7 @@ function smart(mode) {
     }
     for (const seed of ["km", "km", "rnd"]) jobs.push({ c, seed });
   }
-  const ITER = 260;
+  const ITER = window.__smartIter || 260; // tests set a small budget: they check what smart route does, not how well
   let ji = 0,
     it = 0,
     cur = 0,
@@ -1600,7 +1687,7 @@ function smart(mode) {
       $("smartSt").textContent = "routing round groups…";
       let rit = 0,
         rcur = score(solve({ buy, noCross: true }));
-      const RIT = 120;
+      const RIT = window.__smartIter ? 10 : 120;
       const refine = () => {
         const t1 = performance.now();
         const on = movers();
@@ -1636,7 +1723,13 @@ function smart(mode) {
       bl = LENS.filter((L) => r.bought[L]).map((L) => `${r.bought[L]} × ${L} ft`),
       used = keys.filter((k) => st.boxes[k].on).map((k) => st.boxes[k].short);
     $("smartSt").textContent =
-      `${{ clean: "Cleanest", short: "Shortest" }[mode]}${stockOnly ? ", stock only" : ""}${noX ? ", no cables under players" : ""}: ${r.len} ft of XLR in ${r.pieces} pieces · boxes used: ${used.length ? used.join(", ") : "none"} · ${r.cross} run${r.cross === 1 ? "" : "s"} through a group${bl.length ? " · buy " + bl.join(", ") : ""}${r.fail ? ` · ${r.fail} mic${r.fail === 1 ? "" : "s"} still can't reach (short by ${r.short} ft of run)` : ""}`;
+      `${{ clean: "Cleanest", short: "Shortest" }[mode]}${stockOnly ? ", stock only" : ""}${noX ? ", no cables under players" : ""}: ${r.len} ft of XLR in ${r.pieces} pieces · boxes used: ${used.length ? used.join(", ") : "none"} · ${r.cross} run${r.cross === 1 ? "" : "s"} through a group${bl.length ? " · buy " + bl.join(", ") : ""}${r.fail ? ` · ${r.fail} mic${r.fail === 1 ? "" : "s"} still can't reach (short by ${r.short} ft of run)` : ""}${
+        drawn.length
+          ? rewire
+            ? ` · ${drawn.length} hand-drawn cable${drawn.length === 1 ? "" : "s"} re-routed`
+            : ` · ${drawn.length} hand-drawn cable${drawn.length === 1 ? "" : "s"} kept`
+          : ""
+      }`;
   }
   setTimeout(step, 0);
 }
@@ -2539,6 +2632,11 @@ function draw(light) {
     }
     if (showC) {
       const ends = (t) => (t === "desk" ? st.desk : st.boxes[t]);
+      // Hand-drawn cables show their bends as small squares (the pivots you placed).
+      const bends = (path) =>
+        path.slice(1, -1).forEach((z) =>
+          el("rect", { x: X(z.v) - 2.5, y: Y(z.u) - 2.5, width: 5, height: 5, class: "wireBend" }, gC),
+        );
       for (const m of st.mics) {
         const r = res.mic[m.id],
           p = micPos(m),
@@ -2568,8 +2666,10 @@ function draw(light) {
             r.cabs[0].slice().sort((a, b) => a - b),
             m.h + 2,
           );
+        if (r.wired) bends(path);
         const hit = el("polyline", { points: pl, fill: "none", stroke: "transparent", "stroke-width": 9 }, gC);
-        hit.dataset.tip = `XLR · ${esc(micName(m))} → ${r.t === "desk" ? "desk" : esc(st.boxes[r.t].name)}<br>${r.cabs.map(cabTxt).join(" | ")} · ${r.need} ft needed`;
+        hit.dataset.wire = "m:" + m.id; // click to select the cable (js/wiredraw.js)
+        hit.dataset.tip = `XLR · ${esc(micName(m))} → ${r.t === "desk" ? "desk" : esc(st.boxes[r.t].name)}${r.wired ? " · hand-drawn" : ""}<br>${r.cabs.map(cabTxt).join(" | ")} · ${r.need} ft needed`;
       }
       for (const id of ["b24", "b20", "eth"]) {
         const b = st.boxes[id],
@@ -2590,7 +2690,9 @@ function draw(light) {
           },
           gC,
         );
+        if (u.wired) bends(u.pts);
         const hit = el("polyline", { points: pl, fill: "none", stroke: "transparent", "stroke-width": 12 }, gC);
+        hit.dataset.wire = "b:" + id;
         {
           const path = u.pts || [b, q];
           let Lp = 0;
@@ -3198,14 +3300,15 @@ function renderSel() {
   <div class="row"><span>Pattern reach</span><input type="range" id="mReach" min="5" max="60" step="1" value="${m.reach || 20}" aria-label="Pattern reach in feet"><span class="m" id="mReachV">${m.reach || 20} ft</span></div>
   <div class="row"><span></span><label title="Draws the pattern larger for more sensitive mics. Sensitivity changes output level, not the ratio of wanted sound to bleed."><input type="checkbox" id="mSens" ${m.sscale === false ? "" : "checked"}> Scale by sensitivity (${sensOf(m.model)} mV/Pa → ${sensScale(m.model).toFixed(2)}×)</label></div>
   <div class="row"><span>Attached to</span><select id="mG" aria-label="Section this mic moves with">${opt("", m.g || "", "Nothing (free-standing)")}${st.groups.map((x) => opt(x.k, m.g || "", x.l)).join("")}</select></div>
-  <div class="row"><span>Plug into</span><select id="mT">${opt("auto", m.route, "Nearest that fits")}${opt("desk", m.route, "Desk")}${[
+  <div class="row"><span>Plug into</span><select id="mT">${m.wire ? "" : opt("auto", m.route, "Nearest that fits")}${opt("desk", m.wire ? m.wire.to : m.route, "Desk")}${[
     "b24",
     "b20",
     "eth",
   ]
     .filter((i) => st.boxes[i].on)
-    .map((i) => opt(i, m.route, st.boxes[i].name))
+    .map((i) => opt(i, m.wire ? m.wire.to : m.route, st.boxes[i].name))
     .join("")}</select></div>
+  ${wireRow(m.wire, "m")}
   <div class="m">Track ${res.track[m.id].join(", ")} (${pre(res.track[m.id][0])}) · ${r.t === "desk" ? "desk" : esc(st.boxes[r.t].name)}: ${r.cabs.map(cabTxt).join(" | ")} (${r.need} ft needed)</div>
   <div class="mt8"><b>What this mic hears</b> <span class="m">(~${dB(sp.tot).toFixed(0)} dB SPL after the pattern)</span></div>
   ${bleed != null ? `<div class="${bleed > -6 ? "warn" : bleed > -12 ? "" : "ok"}">Everything else is ${Math.abs(bleed).toFixed(0)} dB ${bleed > 0 ? "louder" : "quieter"} than its own section</div>` : ""}
@@ -3237,9 +3340,11 @@ function renderSel() {
       } else $("mH").value = m.h;
     };
     $("mT").onchange = () => {
-      m.route = $("mT").value;
+      if (m.wire) m.wire.to = $("mT").value; // keeps the bends; the far end moves to the new box
+      else m.route = $("mT").value;
       draw(true);
     };
+    wireButtons(m, "m", () => res.mic[m.id]);
     $("mReach").oninput = () => {
       m.reach = +$("mReach").value;
       $("mReachV").textContent = m.reach + " ft";
@@ -3321,17 +3426,85 @@ function renderSel() {
     const B = st.boxes[sel.k],
       u = res.boxUp[sel.k];
     b.innerHTML = `<div class="b6">${esc(B.name)}</div><div class="m">${where(B)}</div>
-  <div class="row"><span>Trunk runs to</span><select id="bU">${opt("auto", B.up, "Nearest that fits")}${B.ups
+  <div class="row"><span>Trunk runs to</span><select id="bU">${B.wire ? "" : opt("auto", B.up, "Nearest that fits")}${B.ups
     .filter((x) => x === "desk" || st.boxes[x].on)
-    .map((x) => opt(x, B.up, x === "desk" ? "Desk" : st.boxes[x].name))
+    .map((x) => opt(x, B.wire ? B.wire.to : B.up, x === "desk" ? "Desk" : st.boxes[x].name))
     .join("")}</select></div>
+  ${wireRow(B.wire, "b")}
   <div class="m">${res.load[sel.k]}/${B.cap} channels · trunk ${u ? u.need : "–"} of ${B.trunk} ft</div>`;
     $("bU").onchange = () => {
-      B.up = $("bU").value;
+      if (B.wire) B.wire.to = $("bU").value;
+      else B.up = $("bU").value;
       draw(true);
     };
+    wireButtons(B, "b", () => res.boxUp[sel.k] && { t: res.boxUp[sel.k].u, pts: res.boxUp[sel.k].pts });
   } else
     b.innerHTML = `<div class="b6">Recording desk</div><div class="m">${where(st.desk)}</div><div class="m">Drag it; every run and trunk re-routes live.</div>`;
+}
+/* Accessories the Mic techniques notes (data/guide-notes.js) suggest for the sections in this layout, counted from
+   the mics on those sections: an item that only matters with a condenser counts only the condenser mics. */
+const KIND_GUIDE = {
+  cl: "Clarinet", fl: "Flute", pic: "Flute", sax: "Saxophone", tsx: "Saxophone", ssx: "Saxophone", bsx: "Saxophone",
+  tpt: "Trumpet", mel: "Trumpet", tb: "Trombone", bar: "Marching baritone", bd: "Marching bass drum",
+  drm: "Drum kit", kck: "Drum kit", tom: "Drum kit", hh: "Drum kit", cym: "Drum kit",
+  pno: "Piano", bas: "Bass amp", gtr: "Electric guitar amp", vox: "Vocalist",
+};
+function guideAccessories(I) {
+  if (typeof GUIDE_NOTES !== "object") return "";
+  const want = new Map(), // item -> { level, why, mics, secs }
+    outdoors = $("venue").value === "out";
+  for (const G of st.groups) {
+    const N = GUIDE_NOTES[KIND_GUIDE[G.kind]];
+    if (!N) continue;
+    const mics = st.mics.filter((m) => m.g === G.k);
+    for (const a of N.acc) {
+      const n = mics.filter((m) => !a.cond || /DC/.test((MODELS[m.model] || {}).type || "")).length;
+      if (!n) continue;
+      const w = want.get(a.item) || { level: "suggested", why: a.why, mics: 0, secs: [] };
+      if (a.level === "needed" && (!a.out || outdoors)) w.level = "needed";
+      w.mics += n;
+      w.secs.push(G.l);
+      want.set(a.item, w);
+    }
+  }
+  if (!want.size) return "";
+  let h = invHead("Suggested by Mic techniques", "For the sections in this layout and the mics on them (draft notes; Mic techniques shows why).");
+  h += `<table class="accSug"><tr><th>Item</th><th></th><th>For</th><th>Count</th><th></th></tr>`;
+  for (const [name, w] of [...want].sort((a, b) => (a[1].level === b[1].level ? 0 : a[1].level === "needed" ? -1 : 1))) {
+    const have = I.acc.find((a) => a.name === name),
+      onList = have ? (have.owned || 0) + (have.add || 0) : 0;
+    h += `<tr><td title="${esc(w.why)}">${esc(name)}</td><td><span class="mgLvl ${w.level}">${w.level}</span></td><td class="m">${esc(w.secs.join(", "))}</td><td>${w.mics}</td><td>${
+      onList >= w.mics ? `<span class="m">on the list (${onList})</span>` : `<button data-accsug="${esc(JSON.stringify([name, w.mics]))}">${have ? "Top up" : "Add"}</button>`
+    }</td></tr>`;
+  }
+  return h + "</table>";
+}
+/* Inspector: a cable's path is smart-routed or hand-drawn (docs/CABLE_ROUTING_PLAN.md). Drawing comes in phase 2;
+   for now "Lock this path" keeps the current route as a hand-drawn one. */
+function wireRow(w, p) {
+  if (w) {
+    const n = w.via.length;
+    return `<div class="row"><span>Cable path</span><span class="m">Hand-drawn${n ? `, ${n} bend${n === 1 ? "" : "s"}` : ", straight"}</span><button id="${p}WireOff" title="Let smart route choose this cable's path and box again">Back to smart route</button></div>`;
+  }
+  return `<div class="row"><span>Cable path</span><span class="m">Smart route</span><button id="${p}WireOn" title="Keep this cable where it runs now; smart route won't change it">Lock this path</button></div>`;
+}
+function wireButtons(o, p, now) {
+  const on = $(p + "WireOn"),
+    off = $(p + "WireOff");
+  if (on)
+    on.onclick = () => {
+      const r = now();
+      if (!r) return;
+      o.wire = { to: r.t, via: (r.pts || []).slice(1, -1).map((z) => ({ v: +z.v.toFixed(2), u: +z.u.toFixed(2) })) };
+      draw(true);
+      status("Cable path locked: smart route leaves it alone. Moving the ends keeps the bends where they are.");
+    };
+  if (off)
+    off.onclick = () => {
+      delete o.wire;
+      draw(true);
+      status("Back to smart route for this cable.");
+    };
 }
 function signText(G) {
   if (!G) return "Room";
@@ -3587,6 +3760,7 @@ sv.addEventListener("pointerdown", (e) => {
   draw(true);
 });
 sv.addEventListener("pointermove", (e) => {
+  if (drag && drag.t === "wire") return; // js/wiredraw.js is dragging a cable bend
   const p = svgPt(e),
     fv = V(p.x),
     fu = U(p.y);
@@ -3652,7 +3826,7 @@ sv.addEventListener("pointermove", (e) => {
   } else tip.style.display = "none";
 });
 function finishSvgDrag(e) {
-  if (!drag) return;
+  if (!drag || drag.t === "wire") return;
   if (drag.moved && drag.t === "m") {
     const m = drag.obj,
       p = micPos(m),
@@ -4026,14 +4200,14 @@ function renderInvTabs() {
   const types = [...new Set(Object.values(MODELS).map((m) => m.type))];
   let h = invHead(
     "Mics",
-    `Owned comes from your inventory sheet (${Object.values(OWNED0).reduce((a, b) => a + b, 0)} mics). “Added” is gear you're planning to buy; the planner can use it, and it shows up on the shopping list.`,
+    `Owned started from your inventory sheet (${Object.values(OWNED0).reduce((a, b) => a + b, 0)} mics); change it here.${typeof team === "object" && team.gearName() ? ` Shared with your team “${esc(team.gearName())}”.` : ""} “Added” is gear you're planning to buy; the planner can use it, and it shows up on the shopping list.`,
   );
   h += `<div class="tw"><table><tr><th>Mic</th><th>Type</th><th>Owned</th><th>Added</th><th>In use</th><th>Spare</th><th></th></tr>`;
   for (const k of Object.keys(MODELS).sort()) {
     const M = MODELS[k],
       u = used(k),
       a = avail(k);
-    h += `<tr><td>${k}${M.custom ? ' <span class="badge">new model</span>' : ""}</td><td>${M.type}</td><td>${esc(M.n)}</td><td>${qtyCtl("micAdd|" + k, I.micAdd[k])}</td><td>${u}</td><td class="${u > a ? "warn" : u > M.n ? "warn" : ""}">${a - u}${u > M.n ? ' <span class="badge">uses added</span>' : ""}</td><td><button class="hb" data-info="${k}" aria-label="Info about ${k}">ⓘ</button></td></tr>`;
+    h += `<tr><td>${k}${M.custom ? ' <span class="badge">new model</span>' : ""}</td><td>${M.type}</td><td><input type="number" min="0" step="1" data-mown="${esc(k)}" value="${M.n || 0}" aria-label="${esc(k)} owned" class="w56"></td><td>${qtyCtl("micAdd|" + k, I.micAdd[k])}</td><td>${u}</td><td class="${u > a ? "warn" : u > M.n ? "warn" : ""}">${a - u}${u > M.n ? ' <span class="badge">uses added</span>' : ""}</td><td><button class="hb" data-info="${k}" aria-label="Info about ${k}">ⓘ</button></td></tr>`;
   }
   h += `</table></div>`;
   const nmForm = `<div class="row"><input id="nmBrand" placeholder="Brand" class="w110" aria-label="Custom mic brand"><input id="nmModel" placeholder="Model" class="w110" aria-label="Custom mic model">
@@ -4143,7 +4317,19 @@ function renderInvTabs() {
       (ac += `<tr><td>${esc(x.name)}</td><td><input type="number" min="0" data-aown="${i}" value="${x.owned ?? ""}" placeholder="?" aria-label="${esc(x.name)} owned" class="w56"></td><td>${qtyCtl("acc|" + i, x.add)}</td><td>${x.user ? `<button class="hb" data-adel="${i}" aria-label="Remove ${esc(x.name)}">✕</button>` : ""}</td></tr>`),
   );
   ac += `</table><div class="row"><input id="accName" placeholder="Shock mount, windscreen, gaffer tape…" style="width:220px" aria-label="New accessory name"><button id="accAdd">Add item</button></div><div id="accErr" class="err"></div>`;
+  ac += guideAccessories(I);
   $("ivAcc").innerHTML = ac;
+  document.querySelectorAll("[data-accsug]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        const [name, n] = JSON.parse(b.dataset.accsug);
+        const have = I.acc.find((a) => a.name === name);
+        if (have) have.add = Math.max(have.add || 0, n - (have.owned || 0));
+        else I.acc.push({ name, owned: 0, add: n, user: 1 });
+        draw(true);
+        status(`${name}: ${n} on the list for this layout.`);
+      }),
+  );
   $("accAdd").onclick = () => {
     const n = $("accName").value.trim();
     if (!n) {
@@ -4153,6 +4339,19 @@ function renderInvTabs() {
     I.acc.push({ name: n, owned: 0, add: 1, user: 1 });
     draw(true);
   };
+  document.querySelectorAll("[data-mown]").forEach(
+    (x) =>
+      (x.onchange = () => {
+        const v = +x.value;
+        if (x.value === "" || !(v >= 0 && Number.isInteger(v))) {
+          x.value = MODELS[x.dataset.mown].n || 0;
+          return;
+        }
+        setMicOwned(x.dataset.mown, v);
+        heatDirty = true;
+        draw(true);
+      }),
+  );
   document.querySelectorAll("[data-sown]").forEach(
     (x) =>
       (x.onchange = () => {
@@ -4237,10 +4436,22 @@ let mmPat = null,
 const photoName = (k) => k.replace(" (XY stereo)", "");
 function micImg(k, M) {
   if (inv().photos[k]) return `<img src="${inv().photos[k]}" alt="${k}">`;
-  const web = M.img ? JSON.stringify(M.img).replace(/"/g, "&quot;") : "null",
-    ty = JSON.stringify(M.type).replace(/"/g, "&quot;");
-  return `<img src="mic-photos/${encodeURIComponent(photoName(k))}.jpg" alt="${k}" referrerpolicy="no-referrer" onerror="const w=${web};if(w&&this.dataset.t!=='1'){this.dataset.t='1';this.src=w}else{this.outerHTML=micSil(${ty})}">`;
+  return `<img class="micPhoto" src="mic-photos/${encodeURIComponent(photoName(k))}.jpg" alt="${k}" referrerpolicy="no-referrer" data-web="${esc(M.img || "")}" data-mtype="${esc(M.type || "")}">`;
 }
+// A missing local photo falls back to the web link, then to a drawing. (A listener, not an inline onerror, so the
+// page's Content Security Policy can forbid inline scripts.)
+document.addEventListener(
+  "error",
+  (e) => {
+    const im = e.target;
+    if (!(im instanceof HTMLImageElement) || !im.classList.contains("micPhoto")) return;
+    if (im.dataset.web && im.dataset.t !== "1") {
+      im.dataset.t = "1";
+      im.src = im.dataset.web;
+    } else im.outerHTML = micSil(im.dataset.mtype);
+  },
+  true,
+);
 function micSil(type) {
   const T = type || "",
     col = "var(--mute)";
@@ -6182,6 +6393,19 @@ function act(a) {
     openHeatInfo();
     return;
   }
+  if (a === "wiredraw") {
+    if (!$("v3").hidden) $("b2d").click();
+    wireDraw.setMode(!wireDraw.mode);
+    return;
+  }
+  if (a === "unwireall") {
+    const drawn = [...st.mics, ...Object.values(st.boxes)].filter((o) => o.wire);
+    if (!drawn.length) return status("There are no hand-drawn cables.");
+    drawn.forEach((o) => delete o.wire);
+    draw(true);
+    status(`${drawn.length} hand-drawn cable${drawn.length === 1 ? "" : "s"} removed: smart route chooses them again. Ctrl+Z brings them back.`);
+    return;
+  }
   if (a === "resetpat") {
     st.mics.forEach((m) => {
       m.reach = 20;
@@ -6434,6 +6658,7 @@ st = load() || fresh();
 checkpointOriginalLayout(st);
 inv();
 mergeCustom();
+applyMicOwned();
 $("oStock").checked = !st.buy;
 $("oClear").checked = !!st.noCross;
 $("hashSel").value = st.hash || "college";
@@ -6532,6 +6757,7 @@ const UI_CHECKS = [
     "tCables",
     "tCont",
     "oDesk",
+    "oRewire",
     "pbAnim",
     "s3mic",
     "s3vol",
@@ -6590,3 +6816,9 @@ applyBg();
 initDock();
 draw();
 if (uiView === "3d") window.addEventListener("load", () => $("b3d").click());
+
+// Theme change (js/theme.js): the SVG follows the CSS colours by itself; redraw what paints its own colours.
+window.addEventListener("rt:themechange", () => {
+  heatDirty = true;
+  draw();
+});

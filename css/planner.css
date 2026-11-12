@@ -2148,3 +2148,10 @@ body.wireDrawing #f {
 .accSug td {
   vertical-align: top;
 }
+.mgSub {
+  margin: 10px 0 2px;
+  font-size: 13px;
+}
+.mgMicNote {
+  margin: 6px 0 8px;
+}

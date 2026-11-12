@@ -1306,10 +1306,19 @@
     const card = (p) =>
       `<div class="mgProc"><b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
     const live = N.proc.live || [],
+      perMic = micNotes(N, chosen)
+        .map(({ label, model, M }) => {
+          const list = notesCtx === "rec" ? M.rec || [] : M.live || [];
+          return `<div class="mgMicNote" data-mic="${e(label)}"><b>${e(label)}</b>${model ? ` <span class="m">${e(model)}</span>` : ""}${
+            list.length ? list.map(card).join("") : `<div class="m">${notesCtx === "rec" ? "No mic-specific changes." : "As for recording."}</div>`
+          }</div>`;
+        })
+        .join(""),
       proc =
-        notesCtx === "rec"
+        (notesCtx === "rec"
           ? N.proc.rec.map(card).join("")
-          : `<p class="m">${live.length ? "Live sound: as for recording, with these changes." : "Live sound: the recording starting points work; raise the high-pass a little if the PA rumbles or feeds back."}</p>${live.map(card).join("")}`;
+          : `<p class="m">${live.length ? "Live sound: as for recording, with these changes." : "Live sound: the recording starting points work; raise the high-pass a little if the PA rumbles or feeds back."}</p>${live.map(card).join("")}`) +
+        (perMic ? `<h4 class="mgSub">Per mic in this setup</h4>${perMic}` : "");
     const sec = (id, title, body) => `<details data-notes="${id}"${notesOpen[id] ? " open" : ""}><summary>${title}</summary>${body}</details>`;
     box.innerHTML =
       sec("src", "Where the sound comes from" + draft, `<ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>`) +
@@ -1319,7 +1328,9 @@
         "Processing starting points",
         `<div class="row" role="radiogroup" aria-label="Processing for"><label><input type="radio" name="mgCtx" value="rec"${notesCtx === "rec" ? " checked" : ""}> Recording / mix</label><label><input type="radio" name="mgCtx" value="live"${notesCtx === "live" ? " checked" : ""}> Live sound</label></div><p class="m">Plugin-neutral starting points: use them in any DAW plugin or outboard unit and adjust by ear.</p>${proc}`,
       ) +
-      `<div class="mgRefs m">Sources: ${N.refs.map(([t, u]) => `<a href="${e(u)}" target="_blank" rel="noopener">${e(t)}</a>`).join(" · ")}</div>`;
+      `<div class="mgRefs m">Sources: ${N.refs.map(([t, u]) => `<a href="${e(u)}" target="_blank" rel="noopener">${e(t)}</a>`).join(" · ")}</div>` +
+      `<div class="row"><button id="mgPrint" title="A one-page sheet: the 3D view, mics, placement and these notes. Choose Save as PDF in the print dialog to keep a file.">Print / save as PDF</button></div>`;
+    $("mgPrint").onclick = () => printSheet(name, chosen);
     box.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => (notesOpen[d.dataset.notes] = d.open)));
     box.querySelectorAll('input[name="mgCtx"]').forEach(
       (r) =>
@@ -1328,6 +1339,74 @@
           notes(name, chosen);
         }),
     );
+  }
+  /* The technique's mics (and its DI, if any) with the per-mic notes that match their slot labels. */
+  function micNotes(N, chosen) {
+    if (!N.mics) return [];
+    const t = source().t[+$("mgTechnique").value],
+      slots = t[2].map((s, i) => ({ label: s[0], model: chosen[i] }));
+    if (t.di) slots.push({ label: "Direct input", model: t.di });
+    return slots.map((x) => ({ ...x, M: N.mics.find((m) => new RegExp(m.match, "i").test(x.label)) })).filter((x) => x.M);
+  }
+  /* Print / save as PDF: a sheet for the chosen technique, opened in a new window (no scripts in it; the page's
+     Content Security Policy carries over). The 3D view is captured right after a render. */
+  function printSheet(name, chosen) {
+    const s = source(),
+      t = s.t[+$("mgTechnique").value],
+      N = GUIDE_NOTES[name],
+      e = (v) => (typeof esc === "function" ? esc(v) : String(v)),
+      cond = chosen.some(isCond);
+    let shot = "";
+    try {
+      render();
+      shot = cv.toDataURL("image/png");
+    } catch (err) {
+      shot = "";
+    }
+    const card = (p) =>
+      `<div class="card"><b>${e(p.kind)}</b><table>${p.set.map(([k, v]) => `<tr><td>${e(k)}</td><td>${e(v)}</td></tr>`).join("")}</table><div class="m">${e(p.why)}</div></div>`;
+    const ctx = notesCtx === "rec" ? "Recording / mix" : "Live sound",
+      general = notesCtx === "rec" ? N.proc.rec : N.proc.live || [],
+      mics = t[2]
+        .map((x, i) => `<tr><td><b>${e(x[0])}</b></td><td>${e(chosen[i] || x[1])}</td><td>${e(x[4])}</td><td>${e(x[5])}</td></tr>`)
+        .join("") + (t.di ? `<tr><td><b>Direct input</b></td><td>${e(t.di)}</td><td></td><td></td></tr>` : ""),
+      acc = N.acc
+        .filter((a) => !a.cond || cond)
+        .map((a) => `<li><b>${e(a.item)}</b> (${a.out ? "needed outdoors" : a.level}): ${e(a.why)}</li>`)
+        .join(""),
+      per = micNotes(N, chosen)
+        .map(({ label, M }) => {
+          const list = notesCtx === "rec" ? M.rec || [] : M.live || [];
+          return list.length ? `<h3>${e(label)}</h3>${list.map(card).join("")}` : "";
+        })
+        .join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${e(name)}: ${e(t[0])}</title><style>
+body{font:13px/1.45 system-ui,sans-serif;color:#111;background:#fff;max-width:780px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:14px 0 4px;border-bottom:1px solid #ccc}h3{font-size:13px;margin:8px 0 2px}
+.m{color:#555}img{width:100%;max-height:300px;object-fit:contain;border:1px solid #ddd;margin:8px 0}
+table{border-collapse:collapse}td{padding:1px 10px 1px 0;vertical-align:top}.mics td{border-bottom:1px solid #eee;padding:3px 10px 3px 0}
+.card{border-left:3px solid #888;padding:2px 8px;margin:5px 0;break-inside:avoid}.card td:first-child{color:#555;white-space:nowrap}
+ul{margin:4px 0;padding-left:18px}.draft{border:1px dashed #888;border-radius:6px;padding:0 5px;font-size:11px;color:#555}
+</style></head><body>
+<h1>${e(name)}: ${e(t[0])}</h1><div class="m">${s.post === "sitting" ? "Sitting" : "Standing"} · processing for ${ctx}${
+      GUIDE_NOTES_STATUS === "draft" ? ' · <span class="draft">draft notes</span>' : ""
+    } · Rec Toolbox</div>
+${shot ? `<img src="${shot}" alt="3D view of the setup">` : ""}
+<p>${e(t[1])}</p>
+<h2>Mics</h2><table class="mics"><tr class="m"><td>Slot</td><td>Mic</td><td>Distance</td><td>Notes</td></tr>${mics}</table>
+<h2>Where the sound comes from</h2><ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>
+${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
+<h2>Processing starting points (${ctx})</h2><div class="m">Plugin-neutral; adjust by ear.</div>${general.map(card).join("") || '<div class="m">As for recording.</div>'}${per}
+<p class="m">Sources: ${N.refs.map(([x]) => e(x)).join(" · ")}</p></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) {
+      $("mgWarn").textContent = "The print sheet was blocked by a pop-up blocker; allow pop-ups for this page and try again.";
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
   }
   function options() {
     const old = wantedGuideInstrument || $("mgInstrument").value;

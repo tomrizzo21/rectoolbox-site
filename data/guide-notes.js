@@ -9,6 +9,8 @@
              out: true = needed outdoors, suggested indoors (the planner's Room setting decides)
              item names match Inventory › Accessories where one exists, so the gear list can count them
      proc:   { rec: [{ kind, set: [[parameter, value]], why }], live: [...] }   live lists only what differs
+     mics:   [{ match: regex source, rec: [...], live: [...], note }]   optional: processing for one mic of a multi-mic
+             technique, matched against the guide's slot label (e.g. "Snare bottom"); first match wins
      refs:   [[title, url]]                                                                                       */
 const GUIDE_NOTES_STATUS = "draft";
 const GUIDE_REFS = {
@@ -35,6 +37,7 @@ const GP = {
   verb: (type, pre, why) => ({ kind: "Reverb (send)", set: [["Type", type], ["Pre-delay", pre], ["Send level", "to taste; start low"]], why }),
   align: (why) => ({ kind: "Phase / time alignment", set: [["Polarity", "check each mic against the closest one; flip if the low end thins"], ["Delay", "nudge the farther mic(s) to line up with the close mic, or leave the room mic late on purpose"]], why }),
 };
+const GATE = (lo, hi, why) => ({ kind: "Gate", set: [["Threshold", "just under the softest hit"], ["Range", `${lo}–${hi} dB (not fully closed)`], ["Attack", "0.1–1 ms"], ["Hold", "50–100 ms"], ["Release", "100–300 ms (with the decay)"]], why });
 const GUIDE_NOTES = {
   Vocalist: {
     source: [
@@ -92,6 +95,19 @@ const GUIDE_NOTES = {
       ],
       live: [],
     },
+    mics: [
+      {
+        match: "^Cab mic",
+        rec: [{ kind: "EQ", set: [["High-pass", "40–50 Hz"], ["Cut", "250–400 Hz, 2–3 dB, if boomy"]], why: "The mic brings the amp's growl and mids; the DI can carry the deepest lows." }],
+      },
+      {
+        match: "^Direct input",
+        rec: [
+          { kind: "Blend with the cab mic", set: [["Delay", "delay the DI by about 1–3 ms (or nudge it in the DAW) until the two line up"], ["Polarity", "flip the DI if the blend gets thinner"], ["Balance", "DI for the low end, mic for the tone; start equal and adjust"]], why: "The amp and speaker make the mic's signal arrive later than the DI." },
+          { kind: "EQ", set: [["High-pass", "30 Hz"], ["Low-pass", "5–8 kHz, to remove string and pickup noise"]], why: "A DI hears everything, including the fret noise the speaker would roll off." },
+        ],
+      },
+    ],
     refs: [GUIDE_REFS.shure],
   },
   "Electric guitar amp": {
@@ -109,6 +125,21 @@ const GUIDE_NOTES = {
       ],
       live: [],
     },
+    mics: [
+      {
+        match: "^Cab mic",
+        rec: [{ kind: "Level", set: [["Role", "the main guitar sound; set its tone first, then add the room mic"]], why: "The close mic is the anchor; the room mic adds space around it." }],
+      },
+      {
+        match: "^Room mic",
+        rec: [
+          { kind: "Time", set: [["Delay", "about 0.9 ms per foot later than the close mic"], ["Choice", "slide it back to line up for a fuller sound, or leave it late for more space"], ["Polarity", "flip it if the blend gets thinner"]], why: "Sound takes about 0.9 ms to travel a foot." },
+          { kind: "EQ", set: [["High-pass", "100–150 Hz"], ["Low-pass", "8 kHz"]], why: "Keeps the low end and fizz with the close mic; the room mic is for space." },
+          { kind: "Level", set: [["Blend", "6–12 dB under the close mic, to taste"]], why: "A little room goes a long way." },
+        ],
+        live: [{ kind: "Live sound", set: [["Room mic", "usually left out live: it mostly picks up the PA and the band"]], why: "On stage the close mic does the job." }],
+      },
+    ],
     refs: [GUIDE_REFS.shure],
   },
   Trumpet: {
@@ -256,15 +287,59 @@ const GUIDE_NOTES = {
     ],
     proc: {
       rec: [
-        { kind: "EQ: kick", set: [["High-pass", "30–40 Hz"], ["Cut", "300–500 Hz, 3–6 dB (cardboard tone)"], ["Boost", "60–80 Hz for weight, 3–5 kHz for beater click"]], why: "Weight plus click, without the boxy middle." },
-        { kind: "EQ: snare", set: [["High-pass", "80–100 Hz"], ["Boost", "150–250 Hz for body, 5 kHz for crack"], ["Cut", "800 Hz–1 kHz if ringy"]], why: "Body and crack." },
-        { kind: "EQ: overheads", set: [["High-pass", "150–300 Hz (cymbal-only) or 60–80 Hz (whole kit)"]], why: "Choose: overheads as cymbal mics, or as the main kit sound." },
-        GP.comp("4:1", "10–30 ms (lets the stick attack through)", "50–100 ms", "3–6 dB", "Kick and snare: punch and steady level."),
-        { kind: "Gate (toms, optional)", set: [["Threshold", "just under the softest hit"], ["Range", "10–20 dB (not fully closed)"], ["Attack", "0.1–1 ms"], ["Hold", "50–100 ms"], ["Release", "100–300 ms (with the decay)"]], why: "Cuts the bleed between tom hits." },
         GP.align("Check each close mic against the overheads; flip polarity where the low end gets thinner."),
+        { kind: "Bus compressor (whole kit, optional)", set: [["Ratio", "2:1–4:1"], ["Attack", "10–30 ms"], ["Release", "100 ms or auto"], ["Gain reduction", "2–4 dB"]], why: "Glues the close mics and overheads into one kit." },
       ],
-      live: [{ kind: "Gate (kick, toms)", set: [["Threshold", "just under the softest hit"], ["Range", "15–30 dB"], ["Attack", "0.1–1 ms"], ["Hold", "50–100 ms"], ["Release", "100–200 ms"]], why: "Live, gates keep the stage bleed and ring out of the PA." }],
+      live: [],
     },
+    mics: [
+      {
+        match: "^Kick",
+        rec: [
+          { kind: "EQ", set: [["High-pass", "30–40 Hz"], ["Cut", "300–500 Hz, 3–6 dB (cardboard tone)"], ["Boost", "60–80 Hz for weight, 3–5 kHz for beater click"]], why: "Weight plus click, without the boxy middle." },
+          GP.comp("4:1", "10–30 ms (lets the beater attack through)", "50–100 ms", "3–6 dB", "Punch and a steady level."),
+        ],
+        live: [GATE(15, 30, "Keeps the bleed from the rest of the kit out of the kick channel.")],
+      },
+      {
+        match: "^Snare( top)?$",
+        rec: [
+          { kind: "EQ", set: [["High-pass", "80–100 Hz"], ["Boost", "150–250 Hz for body, 5 kHz for crack"], ["Cut", "800 Hz–1 kHz if ringy"]], why: "Body and crack." },
+          GP.comp("4:1", "10–30 ms (lets the stick attack through)", "50–100 ms", "3–6 dB", "Evens out ghost notes against rim shots."),
+        ],
+      },
+      {
+        match: "^Snare bottom",
+        rec: [
+          { kind: "Polarity", set: [["Polarity", "flip (invert) against the snare top mic"], ["Check", "with it flipped, the two together should sound fuller, not thinner"]], why: "The bottom mic faces the top mic, so the heads move it the opposite way." },
+          { kind: "EQ", set: [["High-pass", "200–400 Hz"], ["Boost", "5–8 kHz, 2–4 dB, for the wires"]], why: "It's there for the snare wires; the top mic carries the body." },
+          { kind: "Level", set: [["Blend", "6–12 dB under the snare top, to taste"]], why: "A little adds sizzle; too much sounds like a hi-hat." },
+        ],
+      },
+      {
+        match: "tom",
+        rec: [
+          { kind: "EQ", set: [["High-pass", "60–80 Hz (floor) or 80–120 Hz (rack)"], ["Cut", "300–600 Hz, 2–4 dB, if boxy"], ["Boost", "3–5 kHz, 2–3 dB, for stick attack"]], why: "Tone and attack without the cardboard middle." },
+          GATE(10, 20, "Cuts the bleed between tom hits; open enough to keep the decay natural."),
+        ],
+        live: [GATE(15, 30, "Live, gates keep the stage bleed and ring out of the PA.")],
+      },
+      {
+        match: "^Hi-hat",
+        rec: [{ kind: "EQ", set: [["High-pass", "200–400 Hz"], ["Cut", "around 1 kHz, 2–3 dB, if clangy"]], why: "Removes the snare and kick it picks up; the overheads often carry enough hi-hat that this mic stays low." }],
+      },
+      {
+        match: "^Ride",
+        rec: [{ kind: "EQ", set: [["High-pass", "300–500 Hz"], ["Cut", "1–3 kHz, 2 dB, if harsh"]], why: "Keeps the ping and lets the overheads carry the wash." },],
+      },
+      {
+        match: "^Overhead",
+        rec: [
+          { kind: "EQ", set: [["High-pass", "150–300 Hz (cymbal mics) or 60–80 Hz (the main kit sound)"], ["Cut", "2–4 kHz, 1–2 dB, if harsh"]], why: "Choose: overheads as cymbal mics, or as the main kit sound." },
+          { kind: "Pan", set: [["Overhead L / R", "left and right, wide (drummer's or audience view; pick one and keep the toms matching)"]], why: "The pair gives the kit its stereo picture." },
+        ],
+      },
+    ],
     refs: [GUIDE_REFS.shure],
   },
   "Concert bass drum": {

@@ -294,6 +294,13 @@ const GUIDE_NOTES = {
     },
     mics: [
       {
+        match: "^Kick out",
+        rec: [
+          { kind: "Blend with the kick in mic", set: [["Delay", "the out mic arrives about 0.9 ms per foot later; nudge it to line up, or leave it for depth"], ["Polarity", "flip one if the blend loses low end"], ["Balance", "in mic for click, out mic for boom"]], why: "Two mics on one drum, a foot or more apart." },
+          { kind: "EQ", set: [["High-pass", "25–35 Hz"], ["Cut", "300–500 Hz if boxy"]], why: "The out mic carries the weight; leave the click to the in mic." },
+        ],
+      },
+      {
         match: "^Kick",
         rec: [
           { kind: "EQ", set: [["High-pass", "30–40 Hz"], ["Cut", "300–500 Hz, 3–6 dB (cardboard tone)"], ["Boost", "60–80 Hz for weight, 3–5 kHz for beater click"]], why: "Weight plus click, without the boxy middle." },

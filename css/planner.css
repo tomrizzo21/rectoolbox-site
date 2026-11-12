@@ -2155,3 +2155,27 @@ body.wireDrawing #f {
 .mgMicNote {
   margin: 6px 0 8px;
 }
+/* Build your own drum kit (js/guide.js kitUI) */
+.mgKit {
+  margin: 4px 0 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.mgKit .row {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* Gear › Interfaces (js/interfaces.js) */
+.ifCard {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--mic);
+  background: var(--field);
+}
+#ifPaste {
+  width: 100%;
+  max-width: 560px;
+  box-sizing: border-box;
+  font: 12px ui-monospace, monospace;
+}

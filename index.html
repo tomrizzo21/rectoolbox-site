@@ -230,7 +230,7 @@
   <p class="m">Typical ranges from common references; real instruments, players and mics vary. Levels are dB SPL at 1 m, quiet to loud.</p>
  </div>
  <div class="wc" data-win="micdb">
-  <p class="m">Search, or filter any column (contains, any case). Specs are approximate published figures; check the maker's sheet before relying on them.</p>
+  <p class="m">Search, or filter any column (contains, any case). Specs for 62 mics were checked against the makers' spec sheets on 2026-11-11 (the ⓘ card shows the sources); the rest are approximate.</p>
   <div class="row"><input id="dbQ" type="search" placeholder="Search, e.g. c414 or clip-on" style="flex:1;max-width:none" aria-label="Search the mic database"><span id="dbCount" class="m"></span></div>
   <div id="dbTagBar" class="row" style="flex-wrap:wrap;gap:4px" aria-label="Filter by tags"></div>
   <div class="tw" style="max-height:calc(100vh - 230px);overflow:auto"><table class="dbg"><thead><tr><th>Brand</th><th>Model</th><th>Tags</th><th>Type</th><th>Patterns</th><th>Sens. mV/Pa</th><th>Max SPL</th><th>Power</th><th>In production</th><th>Good for</th><th>Own</th><th></th></tr>
@@ -317,6 +317,7 @@
    <p class="m">A practical starting point, not a substitute for listening in the room. Search for a source, select a setup, then choose any mic from your locker for each position.</p>
    <div class="row"><label class="m mgSearchWrap">Search <input id="mgSearch" type="search" placeholder="e.g. bass drum, flute, baritone" autocomplete="off"><div id="mgSearchResults" hidden role="listbox" aria-label="Matching instruments"></div></label><label class="m">Filter group <select id="mgFamily"><option value="all">All instruments</option><option value="college">College / concert band</option><option value="jazz">Jazz</option><option value="rock">Rock / pop</option><option value="marching">Marching band</option></select></label><label class="m">Instrument <select id="mgInstrument"></select></label><label class="m">Posture <select id="mgPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label></div>
    <div class="row"><label class="m">Setup <select id="mgTechnique"></select></label></div>
+   <div id="mgKit" class="mgKit" hidden aria-label="Build your own kit"></div>
    <div id="mgMics" class="mgSlots"></div><div id="mgAdvice" class="mgTech"></div><div id="mgWarn" class="mgWarn" aria-live="polite"></div><div id="mgNotes" class="mgNotes"></div>
    <div class="mgScene"><canvas id="mgCanvas" aria-label="3D mic technique guide"></canvas><div id="mgLoading" class="mgLoading" hidden aria-live="polite"></div><div class="mgCanvasTools"><div><button data-mgv="2d">▦ 2D</button><button data-mgv="3d" class="on">◩ 3D</button></div><div><button data-mga="out" title="Zoom out">−</button><button data-mga="in" title="Zoom in">+</button><button data-mga="fit">Fit</button><button data-mga="ccw" title="Rotate left">⟲</button><button data-mga="cw" title="Rotate right">⟳</button></div></div></div><p class="m">Drag to orbit, right-drag or Shift-drag to pan, scroll to zoom, double-click to refocus. The camera stays above the floor.</p>
  </div>
@@ -330,6 +331,7 @@
 <script src="data/models.js"></script>
 <script src="data/micdb.js"></script>
 <script src="data/guide-notes.js"></script>
+<script src="js/interfaces.js"></script>
 <script src="js/app.js"></script>
 <script src="js/playback.js"></script>
 <script src="js/options.js"></script>

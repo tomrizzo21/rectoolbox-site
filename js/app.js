@@ -1433,9 +1433,10 @@ function solve(o) {
     res.cross += segHits(u.pts, B[id], u.u === "desk" ? desk : B[u.u]);
   }
   // tracks
-  let d8 = [1, 2, 3, 4, 5, 6, 7],
-    ada = [];
-  for (let i = 9; i <= 32; i++) ada.push(i);
+  // Mics that want the D8's preamps go there first; everything else fills the other units in patch order.
+  const live = rigInputs().filter((x) => !x.dead);
+  let d8 = live.filter((x) => x.id === "d8").map((x) => x.t),
+    ada = live.filter((x) => x.id !== "d8").map((x) => x.t);
   const order = st.mics
     .slice()
     .sort((a, b) => (MODELS[a.model].pre === MODELS[b.model].pre ? 0 : MODELS[a.model].pre === "D8" ? -1 : 1));
@@ -1469,33 +1470,17 @@ const where = (p) => {
     y = yd <= 50 ? yd : 100 - yd;
   return `${y.toFixed(1)} yd line (${yd <= 50 ? "upper" : "lower"} half), ${Math.round(p.v)} ft from numbers`;
 };
-const pre = (t) =>
-  !t
-    ? "none"
-    : t <= 8
-      ? `D8 ch${t}`
-      : t <= 16
-        ? `ADA #1 ch${t - 8}`
-        : t <= 24
-          ? `ADA #2 ch${t - 16}`
-          : `ADA #3 ch${t - 24}`;
-/* The interfaces / preamps, in input order. Overall input t lands on interface `iface`, input `input`
-   (e.g. input 9 = interface 2, input 1). Matches pre() above; later this list comes from Gear › Interfaces. */
-const INTERFACES = [
-  { name: "DigiMax D8", n: 8 },
-  { name: "ADA8000 #1", n: 8 },
-  { name: "ADA8000 #2", n: 8 },
-  { name: "ADA8000 #3 (spare)", n: 8 },
-];
+/* Input t on the preamps, from Gear › Interfaces' patch order (js/interfaces.js): e.g. input 9 = interface 2, input 1. */
 function inputSlot(t) {
   if (!t) return null;
-  let first = 1;
-  for (let i = 0; i < INTERFACES.length; i++) {
-    if (t < first + INTERFACES[i].n) return { iface: i + 1, name: INTERFACES[i].name, input: t - first + 1 };
-    first += INTERFACES[i].n;
-  }
-  return null;
+  const x = rigInputs().find((r) => r.t === t);
+  return x ? { iface: x.idx, name: x.label, input: x.input, short: x.short } : null;
 }
+const pre = (t) => {
+  if (!t) return "none";
+  const s = inputSlot(t);
+  return s ? `${s.short} ch${s.input}` : `input ${t}`;
+};
 const cabTxt = (c) => (c ? c.join(" + ") + " ft" : "none");
 
 /* ---------- smart route ---------- */
@@ -3515,11 +3500,13 @@ function renderChan() {
   let h = `<tr><th>Track</th><th>Preamp</th><th>Mic</th><th>Section · stand</th><th>Runs to</th><th>XLR</th></tr>`;
   const rows = [];
   for (const m of st.mics) res.track[m.id].forEach((t, i) => rows.push([t, m, i]));
-  rows.push([8, null, 0]);
+  rigInputs()
+    .filter((x) => x.dead)
+    .forEach((x) => rows.push([x.t, null, x]));
   rows.sort((a, b) => (a[0] || 99) - (b[0] || 99));
   for (const [t, m, i] of rows) {
     if (!m) {
-      h += `<tr><td>8</td><td>D8 ch8</td><td colspan="4" class="m">Blank: D8 channel 8 is dead</td></tr>`;
+      h += `<tr><td>${t}</td><td>${esc(i.short)} ch${i.input}</td><td colspan="4" class="m">Blank: ${esc(i.label)} channel ${i.input} is dead</td></tr>`;
       continue;
     }
     const r = res.mic[m.id],
@@ -4301,14 +4288,8 @@ function renderInvTabs() {
   const tr = Object.values(res_.track)
     .flat()
     .filter((x) => x);
-  const IF = [
-    ["d8", "Behringer DigiMax D8 (ch 8 dead)", 1, tr.filter((x) => x <= 8).length + "/7 inputs"],
-    ["ada", "Behringer ADA8000", 3, tr.filter((x) => x > 8).length + "/24 inputs"],
-    ["dig", "RME Digiface USB", 1, "4 optical ins"],
-  ];
-  $("ivIface").innerHTML =
-    invHead("Interfaces and preamps", "") +
-    `<table><tr><th>Unit</th><th>Owned</th><th>Added</th><th>In use</th></tr>${IF.map(([id, n, o, u]) => `<tr><td>${n}</td><td>${o}</td><td>${qtyCtl("ifaceAdd|" + id, I.ifaceAdd[id])}</td><td>${u}</td></tr>`).join("")}</table>`;
+  $("ivIface").innerHTML = ifaceSection(I, tr);
+  bindIfaceSection();
   // accessories
   let ac = invHead("Accessories", "From the Attachments tab of your sheet, plus anything you add.");
   ac += `<table><tr><th>Item</th><th>Owned</th><th>Added</th><th></th></tr>`;
@@ -4395,7 +4376,7 @@ function addedSummary() {
     if (I.snakeAdd[k])
       L.push(`${I.snakeAdd[k]} × ${{ b24: "24-ch snake", b20: "20-ch snake", eth: "4-ch Ethercon box" }[k]}`);
   for (const k in I.ifaceAdd)
-    if (I.ifaceAdd[k]) L.push(`${I.ifaceAdd[k]} × ${{ d8: "DigiMax D8", ada: "ADA8000", dig: "Digiface" }[k]}`);
+    if (I.ifaceAdd[k]) L.push(`${I.ifaceAdd[k]} × ${{ d8: "DigiMax D8", ada: "ADA8000", dig: "Digiface" }[k] || (ifaceDef(k) || { name: k }).name}`);
   I.acc.forEach((x) => {
     if (x.add) L.push(`${x.add} × ${esc(x.name)}`);
   });
@@ -4530,8 +4511,15 @@ function openMicInfo(k, row) {
    <div class="mmSec"><h4>Options and switches</h4><p>${M.opts || "None"}</p>${(() => {
      const r = dbFor(k) || row;
      if (!r) return "";
-     const f = (v, u) => (v == null ? "—" : v + u);
-     return `<h4>Specs (approx.)</h4><p class="m">Sensitivity ${f(r.s, " mV/Pa")} · max SPL ${f(r.x, " dB")}${r.xp ? ` (${r.xp} dB with pad)` : ""} · self-noise ${f(r.n, " dBA")} · ${r.pw} · in production: ${r.prod}</p>`;
+     // vf: checked against the maker's published specs on that date (src); ap: figures worked out, not published.
+     const ap = r.ap || {},
+       f = (v, u, k) => (v == null ? "—" : ap[k] ? `<span title="${esc(ap[k])}">≈${v}${u}</span>` : v + u),
+       head = r.vf ? `Specs (checked against the maker's specs, ${r.vf})` : "Specs (approx.)";
+     return `<h4>${head}</h4><p class="m">Sensitivity ${f(r.s, " mV/Pa", "s")} · max SPL ${f(r.x, " dB", "x")}${r.xp ? ` (${f(r.xp, " dB", "xp")} with pad)` : ""} · self-noise ${f(r.n, " dBA", "n")} · ${r.pw} · in production: ${r.prod}</p>${
+       r.aka ? `<p class="m">Also listed as: ${esc(r.aka.join(", "))}</p>` : ""
+     }${Object.keys(ap).length ? `<p class="m">≈ worked out from the maker's other figures (hover for how).</p>` : ""}${
+       r.src ? `<p class="m">Sources: ${r.src.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">${i + 1}</a>`).join(" · ")}</p>` : ""
+     }`;
    })()}<h4>Preamp in this rig</h4><p>${M.pre === "D8" ? "DigiMax D8 (pad on)" : "ADA8000"}${M.ch ? " · 2 channels" : ""}</p></div></div>
    <div class="mmSec"><h4>Polar pattern</h4><div>${pats.map((p) => `<button class="chip ${p === mmPat || pats.length === 1 ? "on" : ""}" data-mmpat="${p}">${p === "xy" ? "XY pair" : p}</button>`).join("")}</div>
     <div id="mmPolar">${polarSVG(pats.length === 1 ? pats[0] : mmPat)}</div><p class="m">${M.pattern || ""}</p></div>
@@ -4736,7 +4724,7 @@ function dbRows(skipTags) {
     const tg = MICTAGS.get(r);
     if (!skipTags && dbF.tags && dbF.tags.size && ![...dbF.tags].every((x) => tg.includes(x))) return false;
     if (dbF.tagTxt && !tg.join(" ").toLowerCase().includes(dbF.tagTxt.toLowerCase())) return false;
-    const name = (r.b + " " + r.m + " " + r.t + " " + r.u + " " + tg.join(" ")).toLowerCase();
+    const name = (r.b + " " + r.m + " " + (r.aka || []).join(" ") + " " + r.t + " " + r.u + " " + tg.join(" ")).toLowerCase();
     if (q && !name.replace(/\s+/g, "").includes(q)) return false;
     if (dbF.types.size && !dbF.types.has(typeNorm(r.t))) return false;
     for (const f in dbF.txt) {
@@ -4808,7 +4796,7 @@ function renderDbGrid() {
         const k = keyForDb(r),
           own = MODELS[k] ? MODELS[k].n : 0,
           add = inv().micAdd[k] || 0;
-        return `<tr><td>${esc(r.b)}</td><td><b>${esc(r.m)}</b></td><td style="white-space:normal;min-width:160px">${MICTAGS.get(
+        return `<tr><td>${esc(r.b)}</td><td><b>${esc(r.m)}</b>${r.aka ? `<div class="m" title="Also listed as">aka ${esc(r.aka.join(", "))}</div>` : ""}</td><td style="white-space:normal;min-width:160px">${MICTAGS.get(
           r,
         )
           .map((x) => `<span class="tag ${dbF.tags && dbF.tags.has(x) ? "on" : ""}" data-tagclick="${x}">${x}</span>`)

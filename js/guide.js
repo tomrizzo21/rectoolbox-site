@@ -570,6 +570,17 @@
     point(upper, fore, elbow);
     point(fore, performerBone(o, side + "Hand"), hand);
   }
+  /* Rotate one bone so its child points at target (world space). */
+  function pointBone(bone, child, target) {
+    bone.updateWorldMatrix(true, true);
+    const p = bone.getWorldPosition(V(0, 0, 0)),
+      rest = child.getWorldPosition(V(0, 0, 0)).sub(p).normalize(),
+      want = target.clone().sub(p).normalize(),
+      world = bone.getWorldQuaternion(new THREE.Quaternion()).premultiply(new THREE.Quaternion().setFromUnitVectors(rest, want)),
+      parent = bone.parent ? bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert() : new THREE.Quaternion();
+    bone.quaternion.copy(parent.multiply(world));
+    bone.updateWorldMatrix(true, true);
+  }
   function naturalRestPose(o) {
     for (const side of ["Left", "Right"]) {
       const shoulder = performerBone(o, side + "Arm").getWorldPosition(V(0, 0, 0)),
@@ -619,7 +630,22 @@
         );
         guideSeatY = seat.isEmpty() ? 1.43 : seat.min.y - 0.07;
       }
-      if (k === "vocal" || k === "amp") naturalRestPose(o);
+      const g = rig(k);
+      if (g)
+        ["Left", "Right"].forEach((side, i) => {
+          const shoulder = performerBone(o, side + "Arm").getWorldPosition(V(0, 0, 0));
+          pointArm(o, side, g.elbows ? g.elbows[i] : shoulder.clone().add(V(i ? 0.45 : -0.45, -0.75, 0.1)), g.hands[i]);
+          // Turn the hand toward the instrument (its nearest point), so the fingers wrap it instead of pointing up.
+          const hand = performerBone(o, side + "Hand"),
+            finger = performerBone(o, side + "HandMiddle1");
+          if (hand && finger) {
+            o.updateMatrixWorld(true);
+            const w = hand.getWorldPosition(V(0, 0, 0)),
+              grip = g.d ? at(g.a, g.d, Math.max(0, Math.min(g.len, w.clone().sub(g.a).dot(g.d)))) : g.c || w.clone().add(V(0, 0, -1));
+            if (grip.distanceTo(w) > 0.05) pointBone(hand, finger, w.clone().add(grip.sub(w).normalize().multiplyScalar(0.4)));
+          }
+        });
+      else if (k === "vocal" || k === "amp") naturalRestPose(o);
       else if (["clarinet", "sax", "trumpet", "flute", "violin"].includes(k)) {
         const hands =
           k === "sax"
@@ -666,7 +692,172 @@
       });
     });
   }
+  /* Build your own drum kit (BACKLOG B1): the last Drum kit setup is generated from these choices, so the channel
+     count, bleed (3:1), polarity and overhead checks work on the exact kit before it goes into the planner.
+     Coordinates follow the guide's kit: drummer seated at z ≈ 1.05 facing −z, the drummer's left is −x. */
+  const KIT_DEFAULT = { snares: 1, racks: 1, floors: 1, hh: 1, ride: 1, crashes: 1, splash: 0, kick: "out", snareBottom: 0, tomMics: 1, hhMic: 0, rideMic: 0, oh: "spaced", room: 0 },
+    KIT_KEY = "rt-fh-guide-kit-v1",
+    KIT_TECH = ["Build your own kit", "", []];
+  let kit = { ...KIT_DEFAULT };
+  try {
+    kit = { ...KIT_DEFAULT, ...(store.getJSON(KIT_KEY, null, "custom drum kit") || {}) };
+  } catch (e) {
+    kit = { ...KIT_DEFAULT };
+  }
+  const isKit = (t) => t === KIT_TECH;
+  /* The pieces: drums carry c (shell centre), r, h; cymbals carry c (centre) and r. top = where a mic aims. */
+  function kitPieces() {
+    const P = [],
+      drum = (id, label, c, r, h) => P.push({ id, label, kind: "drum", c, r, h, top: c.clone().add(V(0, h / 2, 0)) }),
+      cym = (id, label, c, r) => P.push({ id, label, kind: "cym", c, r, top: c.clone() });
+    P.push({ id: "kick", label: "Kick", kind: "kick", c: V(0, 0.96, -0.72), r: 0.94, h: 0.7, top: V(0, 0.96, -1.07) });
+    drum("sn1", "Snare", V(-0.72, 1.48, -0.08), 0.42, 0.3);
+    if (kit.snares > 1) drum("sn2", "Snare 2", V(-1.08, 1.78, -0.88), 0.33, 0.22);
+    const racks = kit.racks === 2 ? [V(-0.3, 2.05, -0.5), V(0.45, 2.05, -0.45)] : kit.racks === 1 ? [V(0.08, 2.05, -0.48)] : [];
+    racks.forEach((c, i) => drum("rt" + i, racks.length > 1 ? `Rack tom ${i + 1}` : "Rack tom", c, 0.38, 0.3));
+    const floors = kit.floors === 2 ? [V(1.32, 1.16, 0.0), V(1.95, 1.1, 0.85)] : kit.floors === 1 ? [V(1.42, 1.16, 0.18)] : [];
+    floors.forEach((c, i) => drum("ft" + i, floors.length > 1 ? `Floor tom ${i + 1}` : "Floor tom", c, i ? 0.6 : 0.55, 0.76));
+    if (kit.hh) cym("hh", "Hi-hat", V(-1.72, 2.16, -0.52), 0.42);
+    if (kit.ride) cym("ride", "Ride", V(1.72, 2.65, -0.06), 0.62);
+    const crashes = kit.crashes === 2 ? [V(-1.2, 3.0, -0.95), V(1.05, 3.15, -0.95)] : kit.crashes === 1 ? [V(-1.2, 3.0, -0.95)] : [];
+    crashes.forEach((c, i) => cym("cr" + i, crashes.length > 1 ? `Crash ${i + 1}` : "Crash", c, 0.5));
+    if (kit.splash) cym("sp", "Splash", V(0.2, 2.95, -1.05), 0.28);
+    return P;
+  }
+  /* The mics for the current choices, as guide slots: [label, model, p, q, distance, note], plus the piece each close
+     mic belongs to (for the 3:1 check). */
+  function kitMics(P) {
+    const M = [],
+      a = (v) => v.toArray().map((x) => +x.toFixed(2)),
+      add = (label, model, p, q, dist, note, piece) => {
+        const s = [label, model, a(p), a(q), dist, note];
+        s.piece = piece;
+        M.push(s);
+      },
+      close = (pc, label, note) => {
+        const T = pc.top;
+        add(label, "Shure SM57", T.clone().add(V(0, 0.15, -pc.r - 0.06)), T.clone().add(V(0, 0, -pc.r * 0.45)), "2–4 in", note, pc);
+      };
+    const kick = P[0];
+    if (kit.kick === "in" || kit.kick === "both")
+      add("Kick in", "Shure Beta 52A", V(0.05, 0.98, -0.85), V(0, 0.96, -0.4), "inside, 4–8 in from the beater", "Supercardioid; attack and click.", kick);
+    if (kit.kick === "out" || kit.kick === "both")
+      add(kit.kick === "both" ? "Kick out" : "Kick", "Shure Beta 52A", V(0, 1.0, -1.75), V(0, 0.96, -1.07), "6–12 in outside the front head", "Supercardioid; more boom and shell.", kick);
+    const sn = P.find((x) => x.id === "sn1");
+    close(sn, "Snare top", "Cardioid; aim away from the hi-hat.");
+    if (kit.snareBottom) {
+      const B = sn.c.clone().add(V(0, -sn.h / 2, 0));
+      add("Snare bottom", "Shure SM57", B.clone().add(V(0, -0.18, -sn.r - 0.05)), B.clone().add(V(0, 0, -sn.r * 0.45)), "2–4 in", "Flip polarity against the snare top mic.", sn);
+    }
+    P.filter((x) => x.id === "sn2").forEach((pc) => close(pc, "Snare 2", "Cardioid."));
+    if (kit.tomMics) P.filter((x) => /^(rt|ft)/.test(x.id)).forEach((pc) => close(pc, pc.label, "Cardioid; clip-on or short boom."));
+    const hh = P.find((x) => x.id === "hh"),
+      ride = P.find((x) => x.id === "ride");
+    if (kit.hhMic && hh) add("Hi-hat", "Sennheiser e614", hh.c.clone().add(V(0.15, 0.5, -0.45)), hh.c.clone().add(V(0, 0, -0.18)), "4–8 in", "Aim away from the snare.", hh);
+    if (kit.rideMic && ride) add("Ride", "Sennheiser e614", ride.c.clone().add(V(0.1, 0.55, -0.55)), ride.c.clone().add(V(0, 0, -0.3)), "6–12 in", "From above, toward the bell.", ride);
+    if (kit.oh === "spaced") {
+      // Both overheads exactly the same distance from the snare: the right one is lowered until it matches.
+      const T = sn.top,
+        L = V(-1.6, 4.5, -0.6),
+        dL = L.distanceTo(T),
+        R0 = V(1.5, 0, -0.6),
+        dy = Math.sqrt(Math.max(0.5, dL * dL - (R0.x - T.x) ** 2 - (R0.z - T.z) ** 2));
+      add("Overhead L", "Rode NT5", L, T, "3–4 ft", "Same distance to the snare as Overhead R.");
+      add("Overhead R", "Rode NT5", V(R0.x, T.y + dy, R0.z), T, "3–4 ft", "Same distance to the snare as Overhead L.");
+    } else if (kit.oh === "xy")
+      add("XY overhead", "Rode NT4 (XY stereo)", V(sn.top.x + 0.7, 4.8, -0.2), V(0.1, 1.6, -0.4), "3–4 ft above the kit", "XY pair; mono-safe stereo image.");
+    if (kit.room) add("Room mic", "AKG C414 XLII", V(0.5, 5.0, -7), V(0, 2, -0.5), "6–10 ft", "Blend under the kit for size; check its delay.");
+    return M;
+  }
+  /* 3:1 rule: a close mic should be at least three times as far from any other source as from its own. */
+  function kitBleed(P, M) {
+    const out = [];
+    for (const s of M) {
+      if (!s.piece || /^Overhead|XY|Room/.test(s[0])) continue;
+      const p = V(...s[2]),
+        own = p.distanceTo(V(...s[3]));
+      for (const o of P) {
+        if (o.id === s.piece.id || (o.id === "hh" && /Snare bottom/.test(s[0]))) continue;
+        const ratio = p.distanceTo(o.top) / own;
+        if (ratio < 3) out.push({ ratio, text: `${s[0]} is only ${ratio.toFixed(1)}× as far from the ${o.label.toLowerCase()} as from its own source (3:1): expect bleed; aim it away${/tom|Kick/.test(s[0]) ? " or gate it" : ""}.` });
+      }
+    }
+    return out.sort((a, b) => a.ratio - b.ratio);
+  }
+  function kitRefresh() {
+    const P = kitPieces(),
+      M = kitMics(P),
+      n = M.length + (M.some((s) => /XY/.test(s[0])) ? 1 : 0);
+    KIT_TECH[2] = M;
+    const pol = [kit.snareBottom && "snare top and bottom", kit.kick === "both" && "kick in and out"].filter(Boolean);
+    KIT_TECH[1] =
+      `${n} channel${n === 1 ? "" : "s"} for ${P.length} pieces. ` +
+      (pol.length ? `Check polarity between ${pol.join(" and ")}. ` : "") +
+      (kit.oh === "spaced" ? "The overheads are placed the same distance from the snare. " : kit.oh === "none" ? "No overheads: the cymbals have no mic of their own unless you add hi-hat or ride mics. " : "") +
+      "Warnings below flag close mics that break the 3:1 rule.";
+    return { P, M };
+  }
+  function kitUI(show) {
+    const box = $("mgKit");
+    if (!box) return;
+    box.hidden = !show;
+    if (!show) return;
+    const sel = (key, label, opts) =>
+      `<label class="m">${label} <select data-kit="${key}">${opts.map(([v, t]) => `<option value="${v}"${String(kit[key]) === String(v) ? " selected" : ""}>${t}</option>`).join("")}</select></label>`;
+    const n = (a) => a.map((v) => [v, String(v)]),
+      yn = [[1, "Yes"], [0, "No"]];
+    box.innerHTML =
+      `<div class="row">${sel("snares", "Snares", n([1, 2]))}${sel("racks", "Rack toms", n([0, 1, 2]))}${sel("floors", "Floor toms", n([0, 1, 2]))}</div>` +
+      `<div class="row">${sel("hh", "Hi-hat", yn)}${sel("ride", "Ride", yn)}${sel("crashes", "Crashes", n([0, 1, 2]))}${sel("splash", "Splash", yn)}</div>` +
+      `<div class="row">${sel("kick", "Kick mic", [["out", "Outside"], ["in", "Inside"], ["both", "In and out"]])}${sel("snareBottom", "Snare bottom mic", yn)}${sel("tomMics", "Tom mics", yn)}</div>` +
+      `<div class="row">${sel("hhMic", "Hi-hat mic", yn)}${sel("rideMic", "Ride mic", yn)}${sel("oh", "Overheads", [["spaced", "Spaced pair"], ["xy", "XY pair"], ["none", "None"]])}${sel("room", "Room mic", yn)}</div>`;
+    box.querySelectorAll("[data-kit]").forEach(
+      (e) =>
+        (e.onchange = () => {
+          const v = e.value;
+          kit[e.dataset.kit] = /^\d+$/.test(v) ? +v : v;
+          try {
+            store.setJSON(KIT_KEY, kit);
+          } catch (err) {
+            /* settings stay for this session */
+          }
+          pick = {};
+          slots();
+          build();
+        }),
+    );
+  }
+  function customKit() {
+    const red = 0xb93634,
+      head = 0xf4f0e8,
+      metal = 0x7d8993,
+      black = 0x1d2329,
+      leg = (a, b) => seg(a, b, metal, 0.028);
+    for (const pc of kitPieces()) {
+      if (pc.kind === "kick") {
+        const k = add(new THREE.CylinderGeometry(pc.r, pc.r, pc.h, 28), red, pc.c);
+        k.rotation.x = Math.PI / 2;
+        [-1, 1].forEach((s) => {
+          const face = add(new THREE.CircleGeometry(pc.r * 0.93, 28), head, pc.c.clone().add(V(0, 0, s * (pc.h / 2 + 0.01))));
+          face.rotation.y = s < 0 ? Math.PI : 0;
+        });
+        [-0.62, 0.62].forEach((x) => leg(V(x, 0.54, -0.42), V(x, 0.04, -0.12)));
+      } else if (pc.kind === "drum") {
+        add(new THREE.CylinderGeometry(pc.r, pc.r, pc.h, 24), red, pc.c);
+        add(new THREE.CylinderGeometry(pc.r * 0.93, pc.r * 0.93, 0.042, 24), head, pc.top.clone().add(V(0, 0.022, 0)));
+        [-0.7, 0.7].forEach((s) => leg(V(pc.c.x + s * pc.r, pc.c.y - pc.h / 2, pc.c.z), V(pc.c.x + s * pc.r, Math.max(0.02, pc.c.y - pc.h / 2 - 0.55), pc.c.z + 0.08)));
+      } else {
+        if (pc.id === "hh") [-0.055, 0.055].forEach((dy) => add(new THREE.CylinderGeometry(pc.r, pc.r, 0.025, 24), 0xc5a64c, pc.c.clone().add(V(0, dy, 0))));
+        else add(new THREE.CylinderGeometry(pc.r, pc.r, 0.035, 28), 0xc5a64c, pc.c);
+        leg(pc.c.clone().add(V(0, -0.03, 0)), V(pc.c.x, 0.14, pc.c.z));
+      }
+    }
+    add(new THREE.CylinderGeometry(0.58, 0.48, 0.14, 20), black, V(0, guideSeatY, 1.05));
+    add(new THREE.CylinderGeometry(0.1, 0.1, Math.max(0.1, guideSeatY - 0.12), 12), metal, V(0, (guideSeatY + 0.12) / 2, 1.05));
+    return true;
+  }
   function guideDrumKit() {
+    if (isKit(source().t[+$("mgTechnique").value])) return customKit();
     const red = 0xb93634,
       head = 0xf4f0e8,
       metal = 0x7d8993,
@@ -712,10 +903,301 @@
       leg(V(0, 0.12, 1.05), V(Math.cos(a * 2.094) * 0.48, 0.02, 1.05 + Math.sin(a * 2.094) * 0.48));
     return true;
   }
+  /* Held instruments (BACKLOG B-models): one table says where each instrument sits on the performer, measured from
+     the performer model (standing mouth about 5 ft up; seated lap for the guitar). The instrument, the hands, the
+     sound-source marker and the mics all come from it, so they can't drift apart: the technique's mic positions in G
+     keep their distance and angle to the source and move with the instrument (rigShift).
+     Fields: a = start (mouthpiece, chin rest, neck joint), d = direction, len = length in ft, hands = [left, right]
+     wrist targets, elbows = optional elbow hints, aim = where the mics point, src = [point, direction] of the marker. */
+  const MOUTH = V(0, 4.98, -0.36),
+    unit = (x, y, z) => V(x, y, z).normalize(),
+    at = (a, d, t) => a.clone().addScaledVector(d, t);
+  function rig(k) {
+    if (k === "trumpet" || k === "marchBari") {
+      const big = k === "marchBari",
+        d = unit(0, big ? -0.06 : -0.17, -1),
+        len = big ? 2.1 : 1.6,
+        bell = at(MOUTH, d, len);
+      return {
+        a: MOUTH,
+        d,
+        len,
+        bell,
+        hands: [at(MOUTH, d, len * 0.55).add(V(-0.16, -0.14, 0.12)), at(MOUTH, d, len * 0.42).add(V(0.1, 0.12, 0.16))],
+        aim: bell,
+        src: [bell, d],
+      };
+    }
+    if (k === "trombone") {
+      const d = unit(0, -0.1, -1),
+        bell = MOUTH.clone().add(V(-0.34, -0.06, -1.45));
+      return {
+        a: MOUTH,
+        d,
+        len: 2.4,
+        bell,
+        hands: [MOUTH.clone().add(V(-0.2, -0.32, -0.28)), at(MOUTH, d, 1.35).add(V(0.12, -0.28, 0.12))],
+        aim: bell,
+        src: [bell, V(0, 0, -1)],
+      };
+    }
+    if (k === "clarinet") {
+      const d = unit(0, -0.82, -0.57),
+        len = 2.15;
+      return {
+        a: MOUTH,
+        d,
+        len,
+        hands: [at(MOUTH, d, 0.62).add(V(-0.16, 0.02, 0.2)), at(MOUTH, d, 1.3).add(V(0.15, 0.02, 0.2))],
+        aim: at(MOUTH, d, 1.35),
+        src: [at(MOUTH, d, len), d],
+        holes: [0.9, 1.25, 1.6].map((t) => at(MOUTH, d, t)),
+      };
+    }
+    if (k === "flute") {
+      const lip = MOUTH.clone().add(V(0, -0.07, -0.08)),
+        d = unit(1, -0.18, -0.3),
+        a = at(lip, d, -0.28);
+      return {
+        a,
+        d,
+        len: 2.2,
+        lip,
+        hands: [at(lip, d, 0.42).add(V(-0.05, -0.12, 0.18)), at(lip, d, 1.25).add(V(0.02, -0.12, 0.18))],
+        elbows: [V(-0.9, 4.1, -0.5), V(1.3, 3.9, 0.1)],
+        aim: at(lip, d, 0.3),
+        src: [lip, V(0, 0.35, -0.6)],
+      };
+    }
+    if (k === "sax") {
+      const top = MOUTH.clone().add(V(0, -0.04, -0.06));
+      return {
+        a: top,
+        d: V(0, -1, 0),
+        len: 2.25,
+        hands: [top.clone().add(V(-0.12, -0.75, -0.18)), top.clone().add(V(0.08, -1.3, -0.2))],
+        aim: top.clone().add(V(0.1, -1.55, -0.55)),
+        src: [top.clone().add(V(0.12, -1.25, -0.72)), unit(0.1, 0.25, -1)],
+      };
+    }
+    if (k === "violin") {
+      const chin = V(-0.32, 4.62, -0.32),
+        d = unit(-0.5, 0.12, -0.86),
+        body = at(chin, d, 0.55);
+      return {
+        a: chin,
+        d,
+        len: 1.95,
+        body,
+        hands: [at(chin, d, 1.6).add(V(0.05, -0.15, 0.12)), body.clone().add(V(1.05, -0.3, 0.05))],
+        aim: body.clone().add(V(0, 0.1, 0)),
+        src: [body.clone().add(V(0, 0.12, 0)), V(0, 1, -0.3)],
+      };
+    }
+    if (k === "guitar") {
+      const body = V(0.32, 2.38, 0.12),
+        neck0 = V(-0.25, 2.62, 0.1),
+        d = unit(-1, 0.38, -0.05);
+      return {
+        a: neck0,
+        d,
+        len: 1.55,
+        body,
+        hands: [at(neck0, d, 0.95).add(V(0.05, -0.25, 0.2)), body.clone().add(V(0.15, 0.32, 0.12))],
+        elbows: [V(-1.0, 2.9, 0.5), V(0.9, 3.0, 0.7)],
+        aim: neck0.clone().add(V(0.05, 0.02, -0.18)),
+        src: [body.clone().add(V(-0.12, 0.08, -0.2)), V(0, 0, -1)],
+      };
+    }
+    if (k === "marchBass") {
+      const c = V(0, 3.45, -1.2);
+      return {
+        c,
+        r: 0.85,
+        w: 0.75,
+        hands: [c.clone().add(V(-0.62, 0.1, 0.15)), c.clone().add(V(0.62, 0.1, 0.15))],
+        elbows: [V(-0.9, 3.7, -0.3), V(0.9, 3.7, -0.3)],
+        aim: c.clone().add(V(0, 0, -0.85)),
+        src: [c.clone().add(V(0.38, 0, 0)), V(1, 0, 0)],
+      };
+    }
+    if (k === "concertBass") {
+      const c = V(0, 2.2, -1.25);
+      return {
+        c,
+        r: 1.3,
+        w: 0.8,
+        hands: [V(-0.75, 2.75, -0.15), V(0.45, 2.9, -0.55)],
+        aim: c.clone().add(V(0, 0, -0.4)),
+        src: [c.clone().add(V(0, 0, -0.4)), V(0, 0, -1)],
+      };
+    }
+    return null;
+  }
+  /* Moves a technique's mics with the rigged instrument: the first mic's aim point lands on the rig's aim point, and
+     every mic keeps its distance and angle to the source. */
+  function rigShift(k, t) {
+    const g = rig(k);
+    if (!g || !t[2].length) return V(0, 0, 0);
+    return g.aim.clone().sub(V(...t[2][0][3]));
+  }
+  /* Point a downloaded model's bell axis along d with its mouthpiece end at a, scaled to len.
+     bellL / upL: the model's own bell and up directions; upW: which way "up" should face in the scene. */
+  function fitModel(o, a, d, len, bellL, upL, upW = V(0, 1, 0)) {
+    o.rotation.set(0, 0, 0);
+    o.position.set(0, 0, 0);
+    o.scale.setScalar(1);
+    o.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(o),
+      size = box.getSize(V(0, 0, 0)),
+      ctr = box.getCenter(V(0, 0, 0)),
+      along = Math.abs(bellL.x) * size.x + Math.abs(bellL.y) * size.y + Math.abs(bellL.z) * size.z,
+      f = len / along,
+      mp = ctr.clone().addScaledVector(bellL, -along / 2); // mouthpiece end: the box face opposite the bell
+    const side = (u, b) => u.clone().cross(b).normalize(),
+      L = new THREE.Matrix4().makeBasis(bellL, upL, side(upL, bellL)),
+      up2 = upW.clone().addScaledVector(d, -upW.dot(d)).normalize(),
+      W = new THREE.Matrix4().makeBasis(d, up2, side(up2, d)),
+      q = new THREE.Quaternion().setFromRotationMatrix(W.multiply(L.transpose()));
+    o.quaternion.copy(q);
+    o.scale.setScalar(f);
+    o.position.copy(a).sub(mp.multiplyScalar(f).applyQuaternion(q));
+    o.updateMatrixWorld(true);
+  }
+  const brassC = 0xd7aa42,
+    silverC = 0xcbd3d9;
+  function cone(mouth, d, r, len, c) {
+    // open cone whose wide end sits at `mouth`, opening along d
+    const m = add(new THREE.ConeGeometry(r, len, 20, 1, true), c, at(mouth, d, -len / 2));
+    m.quaternion.setFromUnitVectors(V(0, -1, 0), d);
+    m.material.side = THREE.DoubleSide;
+    return m;
+  }
+  const lastAdded = () => sc.children[sc.children.length - 1];
+  function rigInstrument(k) {
+    const g = rig(k);
+    if (k === "trumpet") {
+      if (!putModel("trumpet", V(0, 0, 0), [0, 0, 0], 1)) return false;
+      fitModel(lastAdded(), g.a, g.d, g.len, V(0, 0, 1), V(0, 1, 0));
+      return true;
+    }
+    if (k === "clarinet") {
+      if (!putModel("clarinet", V(0, 0, 0), [0, 0, 0], 1)) return false;
+      fitModel(lastAdded(), g.a, g.d, g.len, V(-1, 0, 0), V(0, 1, 0), V(0, 0, 1));
+      return true;
+    }
+    if (k === "sax") {
+      if (!putModel("sax", V(0, 0, 0), [0, 0, 0], 1)) return false;
+      const o = lastAdded();
+      o.rotation.set(0, 0, 0);
+      o.position.set(0, 0, 0);
+      o.scale.setScalar(1);
+      o.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(o),
+        f = g.len / (box.max.y - box.min.y);
+      // The bell opening faces +x in the model: turn it forward and a little to the player's right, tilt slightly.
+      o.rotation.set(0.12, Math.PI / 2 - 0.25, 0, "YXZ");
+      o.scale.setScalar(f);
+      o.updateMatrixWorld(true);
+      // Mouthpiece tip: the top of the neck, on the side away from the bell.
+      const tip = V(box.min.x + (box.max.x - box.min.x) * 0.06, box.max.y, (box.min.z + box.max.z) / 2).applyMatrix4(o.matrixWorld);
+      o.position.add(g.a.clone().sub(tip));
+      o.updateMatrixWorld(true);
+      // The model comes on a floor stand: clip off everything below the bottom of the bow.
+      const cut = new THREE.Box3().setFromObject(o).min.y + g.len * 0.17;
+      R.localClippingEnabled = true;
+      o.traverse((n) => {
+        if (n.isMesh) {
+          n.material = n.material.clone();
+          n.material.clippingPlanes = [new THREE.Plane(V(0, 1, 0), -cut)];
+        }
+      });
+      return true;
+    }
+    return false;
+  }
+  /* Simple shapes for the rigged instruments without a downloaded model (and while a model is still loading). */
+  function rigProcedural(k) {
+    const g = rig(k);
+    if (k === "trumpet" || k === "marchBari") {
+      const big = k === "marchBari",
+        rB = big ? 0.42 : 0.22,
+        flare = big ? 0.75 : 0.5,
+        v = at(g.a, g.d, g.len * 0.45);
+      seg(g.a, at(g.a, g.d, g.len - flare), brassC, big ? 0.07 : 0.045);
+      cone(g.bell, g.d, rB, flare, brassC);
+      seg(at(g.a, g.d, g.len * 0.2).add(V(0, -0.14, 0)), at(g.a, g.d, g.len * 0.7).add(V(0, -0.14, 0)), brassC, big ? 0.06 : 0.04);
+      [-0.12, 0, 0.12].forEach((o) => seg(at(v, g.d, o).add(V(0, -0.16, 0)), at(v, g.d, o).add(V(0, 0.16, 0)), brassC, big ? 0.05 : 0.035));
+      return true;
+    }
+    if (k === "trombone") {
+      const slideEnd = at(g.a, g.d, g.len),
+        back = g.a.clone().add(V(-0.34, -0.06, 0.6));
+      [-0.07, 0.07].forEach((x) => seg(g.a.clone().add(V(x, -0.02, 0)), slideEnd.clone().add(V(x, -0.02, 0)), brassC, 0.03));
+      seg(slideEnd.clone().add(V(-0.07, -0.02, 0)), slideEnd.clone().add(V(0.07, -0.02, 0)), brassC, 0.035);
+      seg(g.a.clone().add(V(0, 0, 0.05)), back, brassC, 0.035);
+      seg(back, at(g.bell, V(0, 0, -1), -0.8), brassC, 0.05);
+      cone(g.bell, V(0, 0, -1), 0.36, 0.8, brassC);
+      return true;
+    }
+    if (k === "clarinet") {
+      seg(g.a, at(g.a, g.d, g.len - 0.3), 0x14171c, 0.06);
+      cone(at(g.a, g.d, g.len), g.d, 0.13, 0.3, 0x14171c);
+      g.holes.forEach((p) => add(new THREE.SphereGeometry(0.035, 8, 6), silverC, p.clone().add(V(0, 0.02, -0.06))));
+      return true;
+    }
+    if (k === "flute") {
+      seg(g.a, at(g.a, g.d, g.len), silverC, 0.055);
+      add(new THREE.BoxGeometry(0.12, 0.02, 0.08), silverC, g.lip.clone().add(V(0, 0, -0.03)));
+      for (let i = 0; i < 7; i++) add(new THREE.SphereGeometry(0.035, 8, 6), 0xf7f8f9, at(g.lip, g.d, 0.5 + i * 0.2).add(V(0, 0.05, 0)));
+      return true;
+    }
+    if (k === "sax") {
+      const b = g.a.clone().add(V(0.05, -0.35, -0.18));
+      seg(g.a, b, brassC, 0.04);
+      seg(b, b.clone().add(V(0, -1.45, -0.05)), brassC, 0.13);
+      seg(b.clone().add(V(0, -1.5, -0.05)), g.src[0].clone().add(V(0, -0.45, 0.2)), brassC, 0.15);
+      cone(g.src[0], g.src[1], 0.3, 0.5, brassC);
+      return true;
+    }
+    if (k === "violin") {
+      const body = add(new THREE.SphereGeometry(0.4, 16, 10), 0x91522c, g.body),
+        bow = g.hands[1].clone().add(V(-0.1, 0.12, -0.1));
+      body.scale.set(0.75, 0.22, 1.05);
+      body.quaternion.setFromUnitVectors(V(0, 0, 1), g.d.clone().setY(0).normalize().negate());
+      seg(at(g.a, g.d, 0.95), at(g.a, g.d, g.len), 0x593820, 0.045);
+      seg(bow, at(bow, g.body.clone().add(V(0, 0.15, 0)).sub(bow).normalize(), 2.2), 0x754521, 0.02);
+      return true;
+    }
+    if (k === "guitar") {
+      const body = add(new THREE.SphereGeometry(0.62, 18, 12), 0x91522c, g.body),
+        head = add(new THREE.BoxGeometry(0.42, 0.2, 0.06), 0x3a2414, at(g.a, g.d, g.len + 0.18));
+      body.scale.set(1, 1.15, 0.42);
+      add(new THREE.CircleGeometry(0.17, 18), 0x2a1a10, g.body.clone().add(V(-0.12, 0.08, -0.27))).rotation.y = Math.PI;
+      seg(g.a, at(g.a, g.d, g.len), 0x51351f, 0.075);
+      head.rotation.z = Math.atan2(g.d.y, g.d.x) + Math.PI;
+      return true;
+    }
+    if (k === "marchBass" || k === "concertBass") {
+      const axis = k === "marchBass" ? V(1, 0, 0) : V(0, 0, 1),
+        shell = add(new THREE.CylinderGeometry(g.r, g.r, g.w, 28), 0xb53735, g.c);
+      shell.quaternion.setFromUnitVectors(V(0, 1, 0), axis);
+      [-1, 1].forEach((s) => {
+        const h = add(new THREE.CircleGeometry(g.r * 0.95, 28), 0xf5f2e9, at(g.c, axis, s * (g.w / 2 + 0.005)));
+        h.quaternion.setFromUnitVectors(V(0, 0, 1), axis.clone().multiplyScalar(s));
+        h.material.side = THREE.DoubleSide;
+      });
+      if (k === "marchBass") g.hands.forEach((h, i) => seg(h, h.clone().add(V(i ? -0.2 : 0.2, 0.55, -0.55)), 0x8a6a45, 0.025));
+      else {
+        seg(g.hands[1], g.hands[1].clone().add(V(-0.1, 0.1, -0.6)), 0x8a6a45, 0.03);
+        [-1, 1].forEach((s) => seg(at(g.c, V(1, 0, 0), s * g.r * 0.7).add(V(0, -g.r * 0.7, 0)), V(s * g.r, 0.02, g.c.z), 0x7d8993, 0.03));
+      }
+      return true;
+    }
+    return false;
+  }
   function modelInstrument(k, post) {
-    if (k === "clarinet") return putModel("clarinet", V(-0.43, 2.25, -0.72), [0, 0, Math.PI / 2]);
-    if (k === "trumpet") return putModel("trumpet", V(-1.05, 3.48, -0.83), [0, Math.PI / 2, 0]);
-    if (k === "sax") return putModel("sax", V(0.02, 2.62, -0.58), [0, 0, 0]);
+    if (rig(k)) return rigInstrument(k) || rigProcedural(k);
     if (k === "drums") return guideDrumKit();
     return false;
   }
@@ -1071,6 +1553,11 @@
           "The overheads are not equally distant from their target. Re-measure from the snare before judging polarity.",
         );
     }
+    if (isKit(t)) {
+      const b = kitBleed(kitPieces(), t[2]);
+      b.slice(0, 5).forEach((x) => out.push(x.text));
+      if (b.length > 5) out.push(`…and ${b.length - 5} more close-mic pairs under 3:1.`);
+    }
     t[2].forEach((s) => {
       if (s[2][2] > 0.35)
         out.push(s[0] + " is behind the player/source. Move it to the front or side of the source, then re-aim it.");
@@ -1101,6 +1588,13 @@
       o.quaternion.setFromUnitVectors(V(0, 1, 0), d.clone().normalize());
       hot(p, r * 0.45);
     };
+    const g = rig(k);
+    if (g) {
+      if (k === "clarinet") g.holes.forEach((p) => hot(p.clone().add(V(0, 0, -0.08)), 0.1));
+      if (k === "marchBass") plume(g.src[0].clone().setX(-g.src[0].x), V(-1, 0, 0), 0.6, 0.6);
+      plume(g.src[0], g.src[1].clone().normalize(), /trumpet|trombone|marchBari|Bass/.test(k) ? 1.0 : 0.6, /Bass/.test(k) ? 0.6 : /marchBari|trombone/.test(k) ? 0.42 : 0.3);
+      return;
+    }
     if (/trumpet|trombone|marchBari/.test(k)) plume(V(1.05, 3.55, -1.05), V(0.15, 0, -1), 1.15, 0.38);
     else if (k === "sax") plume(V(0.18, 2.0, -1.0), V(0.12, -0.18, -1), 0.8, 0.3);
     else if (k === "clarinet") {
@@ -1113,6 +1607,8 @@
     else if (k === "violin") hot(V(0.22, 3.32, -0.88), 0.22);
     else if (k === "piano") plume(V(0.45, 1.85, -0.55), V(0, 0.75, 0), 0.7, 0.8);
     else if (k === "amp") plume(V(0, 1, -1.42), V(0, 0, -1), 0.75, 0.55);
+    else if (k === "drums" && isKit(source().t[+$("mgTechnique").value]))
+      kitPieces().forEach((pc) => hot(pc.kind === "kick" ? pc.top : pc.top.clone().add(V(0, 0.05, 0)), pc.kind === "kick" ? 0.4 : pc.kind === "cym" ? 0.16 : 0.22));
     else if (k === "drums") {
       hot(V(0, 1.85, -0.55), 0.45);
       [-0.7, 0.45, -1.45, 1.45].forEach((x) => hot(V(x, 1.75, -0.12), 0.22));
@@ -1235,11 +1731,13 @@
     instrument(src.k, src.post);
     sourceHeat(src.k, src.post);
     if (t.di) diBox();
-    t[2].forEach((s, i) => mic(V(...s[2]), V(...s[3]), choose(s, i, t), s));
+    const shift = rigShift(src.k, t);
+    t[2].forEach((s, i) => mic(V(...s[2]).add(shift), V(...s[3]).add(shift), choose(s, i, t), s));
     guideWarnings(t);
     saveGuide();
     render();
   }
+  G.find((x) => x.k === "drums").t.push(KIT_TECH);
   let wantedGuideInstrument = "";
   function source() {
     return G.find((x) => x.n === $("mgInstrument").value) || G[0];
@@ -1426,7 +1924,10 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
     build();
   }
   function slots() {
-    const t = source().t[+$("mgTechnique").value],
+    const t0 = source().t[+$("mgTechnique").value];
+    if (isKit(t0)) kitRefresh();
+    kitUI(isKit(t0));
+    const t = t0,
       chosen = guideChoices(t);
     $("mgAdvice").textContent = t[1];
     notes(source().n, chosen);
@@ -1521,6 +2022,14 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}
     }
     R.render(sc, cam);
   }
+  /* For tests and screenshots: camera access (orbit radius / angle / tilt and target). */
+  window.__guideCam = (r, th, ph, ty) => {
+    Object.assign(orb, { r, th, ph });
+    if (ty != null) tar.set(0, ty, -0.4);
+    render();
+  };
+  window.__guideScene = () => sc;
+  window.__guideRig = (k) => rig(k);
   function bind() {
     let d;
     cv.addEventListener("contextmenu", (e) => e.preventDefault());

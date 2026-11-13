@@ -1123,13 +1123,13 @@ th {
 }
 .mgSlots {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 360px));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 560px));
   gap: 6px;
   margin: 5px 0;
 }
 .mgSlot {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(170px, 1.25fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(190px, 0.9fr);
   align-items: center;
   gap: 2px 7px;
   border: 1px solid var(--rule);
@@ -1138,9 +1138,7 @@ th {
   background: var(--field);
 }
 .mgSlot .m {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .mgSlot select {
   grid-column: 3;

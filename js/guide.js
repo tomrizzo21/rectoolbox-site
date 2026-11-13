@@ -1712,6 +1712,7 @@
   }
   /* The guide is a planning sandbox. Its locker is deliberately independent from mics currently assigned on the main field canvas. */
   function guideStock(k) {
+    if (!micInventoryDefined()) return 99; // no inventory yet: any mic may be picked, nothing is counted
     return Math.max(0, avail(k));
   }
   function role(s) {
@@ -1942,43 +1943,57 @@
     add(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), 0x3a434b, pivot.clone().add(V(0, 0.03, 0)));
   }
 
+  /* Mic bodies: one softened cylinder per mic (feet), sized and coloured by type and model, with the capsule
+     (the lighter grille/basket at the front) set apart from the body by a thin accent ring. */
+  function roundedCyl(r, len, rad) {
+    const pts = [new THREE.Vector2(0, -len)],
+      k = Math.min(rad, r * 0.9, len / 2);
+    for (let i = 0; i <= 4; i++) {
+      const a = (i / 4) * (Math.PI / 2);
+      pts.push(new THREE.Vector2(r - k + Math.sin(a) * k, -len + k - Math.cos(a) * k));
+    }
+    for (let i = 0; i <= 4; i++) {
+      const a = (i / 4) * (Math.PI / 2);
+      pts.push(new THREE.Vector2(r - k + Math.cos(a) * k, -k + Math.sin(a) * k));
+    }
+    pts.push(new THREE.Vector2(0, 0));
+    return new THREE.LatheGeometry(pts, 20);
+  }
+  function micLook(key, type) {
+    const k = key || "";
+    let l = { r: 0.03, len: 0.55, cap: 0.1, capR: 1.05, body: 0x2a3036, grille: 0x9aa3ab, ring: 0xc9a24b };
+    if (/LDC/.test(type)) l = { r: 0.09, len: 0.62, cap: 0.26, capR: 1.0, body: 0x2a3036, grille: 0xaab2b9, ring: 0xc9a24b };
+    else if (/Ribbon/.test(type)) l = { r: 0.07, len: 0.8, cap: 0.35, capR: 1.0, body: 0x3b3f44, grille: 0xb4b9be, ring: 0x8b949d };
+    else if (/Shotgun/.test(type)) l = { r: 0.022, len: 1.3, cap: 0.5, capR: 1.0, body: 0x23292e, grille: 0x6b7680, ring: 0x8b949d };
+    else if (/Boundary|Clip|Miniature/.test(type)) l = { r: 0.02, len: 0.2, cap: 0.07, capR: 1.0, body: 0x23292e, grille: 0x9aa3ab, ring: 0x8b949d };
+    else if (/SDC/.test(type)) l = { r: 0.028, len: 0.55, cap: 0.12, capR: 1.0, body: 0x2a3036, grille: 0xb4b9be, ring: 0x8b949d };
+    else if (/Condenser \(handheld\)/.test(type)) l = { r: 0.035, len: 0.6, cap: 0.28, capR: 1.35, body: 0x2a3036, grille: 0x9aa3ab, ring: 0x8b949d };
+    else if (/58|Beta 5[28]|e8\d\d|Beta 87|v7|M88|D112|D6/.test(k) && !/Beta 52/.test(k))
+      l = { r: 0.032, len: 0.55, cap: 0.2, capR: 1.5, body: 0x2a3036, grille: 0x8f98a0, ring: 0x8b949d };
+    else if (/Beta 52|D112|D6|kick/i.test(k)) l = { r: 0.07, len: 0.45, cap: 0.12, capR: 1.0, body: 0x23292e, grille: 0x8f98a0, ring: 0x8b949d };
+    else if (/Dynamic/.test(type)) l = { r: 0.028, len: 0.5, cap: 0.1, capR: 1.15, body: 0x2a3036, grille: 0x8f98a0, ring: 0x8b949d };
+    if (/C414|C 414/.test(k)) l.ring = 0xd4af37;
+    const hex = typeof MICLOOK === "object" && MICLOOK[k.replace(" (XY stereo)", "")];
+    if (hex) {
+      // body colour from the mic's own photo; the capsule is the same colour lifted (dark mics) or dimmed (light ones)
+      const c = new THREE.Color("#" + hex),
+        lum = c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
+      l.body = c.getHex();
+      l.grille = c.clone().lerp(new THREE.Color(lum < 0.5 ? 0xc4cbd1 : 0x6b6f73), lum < 0.5 ? 0.45 : 0.22).getHex();
+    }
+    return l;
+  }
   function guideMicBody(p, d, key) {
     const spec = MODELS[key] || {},
-      type = spec.type || "Dynamic",
-      metal = 0x242a30,
-      grille = 0x68727c,
-      back = p.clone().sub(d.clone().multiplyScalar(0.22));
-    if (/LDC/.test(type)) {
-      const body = add(new THREE.BoxGeometry(0.42, 0.76, 0.19), metal, back);
-      body.quaternion.setFromUnitVectors(V(0, 0, 1), d);
-      const face = add(new THREE.CircleGeometry(0.155, 18), 0x9ba4ac, p);
-      face.quaternion.setFromUnitVectors(V(0, 0, 1), d);
-      const shock = add(
-        new THREE.TorusGeometry(0.29, 0.026, 8, 18),
-        0x8b949d,
-        back.clone().sub(d.clone().multiplyScalar(0.1)),
-      );
-      shock.quaternion.setFromUnitVectors(V(0, 0, 1), d);
-      seg(back.clone().sub(d.clone().multiplyScalar(0.17)), back, 0x1f252b, 0.025);
-    } else if (/SDC/.test(type)) {
-      const body = add(
-        new THREE.CylinderGeometry(0.052, 0.065, 0.62, 14),
-        metal,
-        p.clone().sub(d.clone().multiplyScalar(0.39)),
-      );
-      body.quaternion.setFromUnitVectors(V(0, 1, 0), d);
-      const cap = add(new THREE.CylinderGeometry(0.061, 0.061, 0.16, 14), grille, p);
-      cap.quaternion.setFromUnitVectors(V(0, 1, 0), d);
-    } else {
-      const body = add(
-        new THREE.CylinderGeometry(0.09, 0.115, 0.48, 14),
-        metal,
-        p.clone().sub(d.clone().multiplyScalar(0.25)),
-      );
-      body.quaternion.setFromUnitVectors(V(0, 1, 0), d);
-      const cap = add(new THREE.SphereGeometry(0.12, 14, 10), grille, p);
-      cap.scale.set(1, 1.15, 1);
-    }
+      l = micLook(key, spec.type || "Dynamic"),
+      q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), d),
+      soft = Math.min(l.r * 0.5, 0.03),
+      body = add(roundedCyl(l.r, l.len - l.cap, soft), l.body, p.clone().sub(d.clone().multiplyScalar(l.cap)));
+    body.quaternion.copy(q);
+    const head = add(roundedCyl(l.r * l.capR, l.cap, soft * 1.2), l.grille, p);
+    head.quaternion.copy(q);
+    const ring = add(new THREE.CylinderGeometry(l.r * l.capR * 1.04, l.r * l.capR * 1.04, 0.014, 20), l.ring, p.clone().sub(d.clone().multiplyScalar(l.cap)));
+    ring.quaternion.copy(q);
   }
   const plainMic = mic;
   mic = (p, q, m, s) => {
@@ -2368,8 +2383,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
                   (available <= 0 && k !== selected ? "disabled" : "") +
                   ">" +
                   k +
-                  " · free " +
-                  guideStock(k) +
+                  (micInventoryDefined() ? " · free " + guideStock(k) : "") +
                   "</option>"
                 );
               })
@@ -2586,6 +2600,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
     }, 150);
   $("mgInstrument").onchange = tech;
   window.addEventListener("rt:themechange", () => R && build()); // accents and background follow the theme
+  window.addEventListener("rt:inventorychange", () => { slots(); if (R) build(); }); // the mic list and "free N" follow the locker
   $("mgTechnique").onchange = () => {
     pick = {};
     slots();

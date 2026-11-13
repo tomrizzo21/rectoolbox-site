@@ -161,6 +161,7 @@ const catalogUI = (() => {
     s.title = `${n} shared item${n === 1 ? "" : "s"} waiting for your review (Gear › Interfaces, or Mic database › Add a mic with its specs)`;
   }
   if (typeof account === "object" && account.onChange) account.onChange(() => setTimeout(badge, 0));
+  setTimeout(() => typeof checkOwnerStock === "function" && checkOwnerStock(), 0); // the sheet's mic counts are the owner's (js/app.js)
 
   /* The block under Gear › Interfaces (kind "interface") and Mic database › Add a mic (kind "mic"): review queue
      (admins), browse and add, my submissions. */

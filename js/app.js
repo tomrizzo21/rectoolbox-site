@@ -151,7 +151,30 @@ function mergeCustom() {
    gear when signed in to a team: js/team.js). Custom models keep their own count. */
 function applyMicOwned() {
   const I = inv();
-  for (const k in OWNED0) if (MODELS[k] && !MODELS[k].custom) MODELS[k].n = I.micOwned[k] ?? OWNED0[k];
+  const seeded = !window.__signedInUser || window.__ownerStock === true;
+  for (const k in OWNED0) if (MODELS[k] && !MODELS[k].custom) MODELS[k].n = I.micOwned[k] ?? (seeded ? OWNED0[k] : 0);
+}
+/* The inventory sheet's mic counts are Tom's gear: a signed-in user sees them only if they are an admin (the owner);
+   anyone else signs in to a blank locker and adds what they own. Signed out (the local demo) keeps the sheet. */
+function checkOwnerStock() {
+  if (typeof account !== "object" || !account.onChange || typeof catalogUI !== "object") return;
+  account.onChange(async (u) => {
+    window.__signedInUser = !!u;
+    let owner = false;
+    if (u) {
+      try {
+        owner = await catalogUI.isAdmin();
+      } catch (e) {}
+    }
+    window.__ownerStock = owner;
+    applyMicOwned();
+    if (typeof renderInvTabs === "function") renderInvTabs();
+    window.dispatchEvent(new Event("rt:inventorychange"));
+  });
+}
+/* Is any inventory defined (something owned or to buy)? Without one the guide neither limits nor counts mics. */
+function micInventoryDefined() {
+  return Object.keys(MODELS).some((k) => (MODELS[k].n || 0) > 0) || Object.keys(inv().micAdd).some((k) => inv().micAdd[k] > 0);
 }
 function setMicOwned(k, n) {
   if (!MODELS[k]) return;
@@ -4405,6 +4428,7 @@ function renderInvTabs() {
           return;
         }
         setMicOwned(x.dataset.mown, v);
+        window.dispatchEvent(new Event("rt:inventorychange"));
         heatDirty = true;
         draw(true);
       }),

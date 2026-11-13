@@ -144,6 +144,7 @@ const stockAvail = () => {
   return o;
 };
 function mergeCustom() {
+  if (typeof applyUserMics === "function") applyUserMics(); // mics added with their specs (js/usermics.js) join the Mic database
   for (const k in inv().custom) MODELS[k] = inv().custom[k];
 }
 /* Owned mic counts: the inventory sheet's, unless changed in Inventory › Mics (kept with the layout, or with the team's
@@ -1973,6 +1974,7 @@ function rotateCanvas(d) {
   st.rots[t] = ((((st.rots[t] || 0) + d) % 360) + 360) % 360;
   applyBg();
   draw();
+  if (window.__view3dRotate) window.__view3dRotate(-d * DEG); // the 3D view follows: the scene turns the same way on screen (js/view3d.js)
   status(`Canvas rotated to ${st.rots[t]}°.`);
 }
 function syncRot() {
@@ -4798,11 +4800,12 @@ function tagsOf(r) {
   if (r.prod === "No") T.push("Discontinued");
   return T;
 }
-const MICTAGS = new Map(MICDB.map((r) => [r, tagsOf(r)]));
+const MICTAGS = new Map(MICDB.map((r) => [r, tagsOf(r)])),
+  micTags = (r) => MICTAGS.get(r) || (MICTAGS.set(r, tagsOf(r)), MICTAGS.get(r)); // mics added later have no entry yet
 function dbRows(skipTags) {
   const q = dbF.q.toLowerCase().replace(/\s+/g, "");
   return MICDB.filter((r) => {
-    const tg = MICTAGS.get(r);
+    const tg = micTags(r);
     if (!skipTags && dbF.tags && dbF.tags.size && ![...dbF.tags].every((x) => tg.includes(x))) return false;
     if (dbF.tagTxt && !tg.join(" ").toLowerCase().includes(dbF.tagTxt.toLowerCase())) return false;
     const name = (r.b + " " + r.m + " " + (r.aka || []).join(" ") + " " + r.t + " " + r.u + " " + tg.join(" ")).toLowerCase();
@@ -4839,8 +4842,8 @@ function renderTagBar() {
   dbF.tags = dbF.tags || new Set();
   const base = dbRows(true),
     cnt = {};
-  for (const r of base) for (const x of MICTAGS.get(r)) cnt[x] = (cnt[x] || 0) + 1;
-  const all = [...new Set([...MICTAGS.values()].flat())].sort();
+  for (const r of base) for (const x of micTags(r)) cnt[x] = (cnt[x] || 0) + 1;
+  const all = [...new Set(MICDB.flatMap(micTags))].sort();
   $("dbTagBar").innerHTML =
     `<span class="m">Tags:</span>` +
     all
@@ -4877,7 +4880,7 @@ function renderDbGrid() {
         const k = keyForDb(r),
           own = MODELS[k] ? MODELS[k].n : 0,
           add = inv().micAdd[k] || 0;
-        return `<tr><td>${esc(r.b)}</td><td><b>${esc(r.m)}</b>${r.aka ? `<div class="m" title="Also listed as">aka ${esc(r.aka.join(", "))}</div>` : ""}</td><td style="white-space:normal;min-width:160px">${MICTAGS.get(
+        return `<tr><td>${esc(r.b)}</td><td><b>${esc(r.m)}</b>${r.aka ? `<div class="m" title="Also listed as">aka ${esc(r.aka.join(", "))}</div>` : ""}</td><td style="white-space:normal;min-width:160px">${micTags(
           r,
         )
           .map((x) => `<span class="tag ${dbF.tags && dbF.tags.has(x) ? "on" : ""}" data-tagclick="${x}">${x}</span>`)
@@ -4914,6 +4917,7 @@ function renderDbGrid() {
         }),
     );
 }
+$("umDet").addEventListener("toggle", () => $("umDet").open && userMicsUI.render()); // Add a mic with its specs (js/usermics.js)
 (function initDbGrid() {
   const types = [...new Set(MICDB.map((r) => typeNorm(r.t)))].sort();
   $("dbTypes").innerHTML = types
@@ -5621,6 +5625,9 @@ function switchBg(type) {
   for (const k of SCENE_KEYS) st[k] = nx[k] !== undefined ? nx[k] : starterScene(type)[k];
   st.risers = st.risers || [];
   sel = null;
+  // A stage opens with the audience at the bottom (Tom, backlog: "consider defaulting stage to audience-at-bottom");
+  // a rotation you already chose for this layout's stage is kept.
+  if (type === "stage" && !(st.rots && st.rots.stage !== undefined)) (st.rots = st.rots || {}).stage = 90;
   applyBg();
   zoomFit();
   draw();

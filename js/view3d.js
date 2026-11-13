@@ -18,6 +18,14 @@
     line.userData.cable = kind;
     scene.add(line);
   };
+  /* The 3D camera turns with the canvas (BACKLOG §C): rotating the 2D canvas clockwise by d degrees turns the scene
+     clockwise by d degrees in the 3D view too. The camera orbits the other way for that (a point's direction on screen
+     is the camera's azimuth minus 90°, so the azimuth falls by d), which is why app.js passes -d. */
+  window.__view3dRotate = (rad) => {
+    sph.th += rad;
+    if (R && !$("v3").hidden) render();
+  };
+  window.__view3dAzimuth = () => sph.th; // for tests
   window.__pickup3d = () => (scene ? scene.children.filter((o) => o.name === "pickupField").length : 0); // for tests
   window.__spectra3d = () => (scene ? scene.children.filter((o) => o.name === "groupSpectrum").length : 0); // for tests
   // For tests: every cable line's point heights.

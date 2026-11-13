@@ -383,6 +383,13 @@ const GUIDE_NOTES = {
         rec: [HP("300–500 Hz", "Keeps the ping and lets the overheads carry the wash."), CUT("it sounds harsh", "1–3 kHz", "about −2 dB", "medium (Q 1–2)", "Softens the stick's ping.")],
       },
       {
+        match: "^Aux",
+        rec: [
+          { kind: "EQ: high-pass", set: [["Frequency", "200–300 Hz"], ["Slope", "12–18 dB/oct"]], why: "Cowbells, tambourines and blocks have nothing low; this keeps kick and toms out of the channel." },
+          GATE(10, 20, "Aux hits are short and sparse; a gate keeps the rest of the kit out between them."),
+        ],
+      },
+      {
         match: "^Overhead",
         rec: [
           HP("150–300 Hz (cymbal mics) or 60–80 Hz (the main kit sound)", "Choose: overheads as cymbal mics, or as the main kit sound."),

@@ -227,7 +227,7 @@ Its published specs (brand, model, inputs, phantom, pads, sample rates, source p
   );
   const catOpen = $("catOpen");
   if (catOpen) catOpen.onclick = () => (typeof catalogUI === "object" ? catalogUI.render($("ifCat")) : ($("catMsg").textContent = "The shared catalog isn't available here."));
-  if (typeof catalogUI === "object" && catalogUI.opened) catalogUI.render($("ifCat"));
+  if (typeof catalogUI === "object" && catalogUI.opened("interface")) catalogUI.render($("ifCat"));
   const take = (text) => {
     const r = parseIface(text);
     if (r.errors) {

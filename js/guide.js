@@ -852,7 +852,7 @@
   /* Build your own drum kit (BACKLOG B1): the last Drum kit setup is generated from these choices, so the channel
      count, bleed (3:1), polarity and overhead checks work on the exact kit before it goes into the planner.
      Coordinates follow the guide's kit: drummer seated at z ≈ 1.05 facing −z, the drummer's left is −x. */
-  const KIT_DEFAULT = { snares: 1, racks: 1, floors: 1, hh: 1, ride: 1, crashes: 1, splash: 0, kick: "out", snareBottom: 0, tomMics: 1, hhMic: 0, rideMic: 0, oh: "spaced", room: 0 },
+  const KIT_DEFAULT = { snares: 1, racks: 1, floors: 1, hh: 1, ride: 1, crashes: 1, splash: 0, kick: "out", snareBottom: 0, tomMics: 1, hhMic: 0, rideMic: 0, oh: "spaced", room: 0, aux: 0, auxMic: 0 },
     KIT_KEY = "rt-fh-guide-kit-v1",
     KIT_TECH = ["Build your own kit", "", []];
   let kit = { ...KIT_DEFAULT };
@@ -862,6 +862,8 @@
     kit = { ...KIT_DEFAULT };
   }
   const isKit = (t) => t === KIT_TECH;
+  let KIT_DIST = null; // distances in inches for the current kit (see kitDistances)
+  window.KIT_DIST_FOR_TEST = () => KIT_DIST; // test hook
   /* The pieces: drums carry c (shell centre), r, h; cymbals carry c (centre) and r. top = where a mic aims. */
   function kitPieces() {
     const P = [],
@@ -879,6 +881,14 @@
     const crashes = kit.crashes === 2 ? [V(-1.2, 3.0, -0.95), V(1.05, 3.15, -0.95)] : kit.crashes === 1 ? [V(-1.2, 3.0, -0.95)] : [];
     crashes.forEach((c, i) => cym("cr" + i, crashes.length > 1 ? `Crash ${i + 1}` : "Crash", c, 0.5));
     if (kit.splash) cym("sp", "Splash", V(0.2, 2.95, -1.05), 0.28);
+    /* Aux percussion (clamped near the hi-hat): 1 = cowbell and tambourine, 2 = adds a wood block. Small sources the
+       overheads cover; they count for bleed, and can have a mic of their own. */
+    const aux = (id, label, c, r) => P.push({ id, label, kind: "aux", c, r, top: c.clone() });
+    if (kit.aux >= 1) {
+      aux("cb", "Cowbell", V(-1.95, 2.7, -1.12), 0.14);
+      aux("tb", "Tambourine", V(-1.55, 2.55, -1.28), 0.2);
+    }
+    if (kit.aux >= 2) aux("wb", "Wood block", V(-0.95, 2.62, -1.2), 0.12);
     return P;
   }
   /* The mics for the current choices, as guide slots: [label, model, p, q, distance, note], plus the piece each close
@@ -921,8 +931,24 @@
         dy = Math.sqrt(Math.max(0.5, dL * dL - (R0.x - T.x) ** 2 - (R0.z - T.z) ** 2));
       add("Overhead L", "Rode NT5", L, T, "3–4 ft", "Same distance to the snare as Overhead R.");
       add("Overhead R", "Rode NT5", V(R0.x, T.y + dy, R0.z), T, "3–4 ft", "Same distance to the snare as Overhead L.");
+    } else if (kit.oh === "glyn") {
+      /* Glyn Johns: one mic about 3.5 ft straight above the snare, the other on the drummer's right (near the floor
+         tom) at exactly the same distance from the snare (use a tape measure), both aimed at the snare. */
+      const T = sn.top,
+        d1 = 3.5,
+        M1 = T.clone().add(V(0, d1, 0)),
+        y2 = 2.25,
+        x2 = 2.3,
+        dz = Math.sqrt(Math.max(0.2, d1 * d1 - (x2 - T.x) ** 2 - (y2 - T.y) ** 2));
+      add("Overhead 1 (above snare)", "Rode NT5", M1, T, "3½ ft above the snare", "Cardioid; straight down at the snare. Same distance to the snare as Overhead 2.");
+      add("Overhead 2 (Glyn Johns)", "Rode NT5", V(x2, y2, T.z - dz), T, "3½ ft from the snare", "Cardioid; level with the floor tom's rim, aimed at the snare. Measure it to the snare.");
     } else if (kit.oh === "xy")
       add("XY overhead", "Rode NT4 (XY stereo)", V(sn.top.x + 0.7, 4.8, -0.2), V(0.1, 1.6, -0.4), "3–4 ft above the kit", "XY pair; mono-safe stereo image.");
+    const auxP = P.filter((x) => x.kind === "aux");
+    if (kit.auxMic && auxP.length) {
+      const c = auxP.reduce((a, x) => a.add(x.c), V(0, 0, 0)).multiplyScalar(1 / auxP.length);
+      add("Aux percussion", "Shure SM57", c.clone().add(V(-0.1, 0.7, -0.7)), c, "6–10 in", "Cardioid; one mic for the aux pieces, aimed away from the hi-hat.", auxP[0]);
+    }
     if (kit.room) add("Room mic", "AKG C414 XLII", V(0.5, 5.0, -7), V(0, 2, -0.5), "6–10 ft", "Blend under the kit for size; check its delay.");
     return M;
   }
@@ -930,7 +956,7 @@
   function kitBleed(P, M) {
     const out = [];
     for (const s of M) {
-      if (!s.piece || /^Overhead|XY|Room/.test(s[0])) continue;
+      if (!s.piece || /^Overhead|XY|Room|Aux/.test(s[0])) continue;
       const p = V(...s[2]),
         own = p.distanceTo(V(...s[3]));
       for (const o of P) {
@@ -941,18 +967,46 @@
     }
     return out.sort((a, b) => a.ratio - b.ratio);
   }
+  const feetIn = (ft) => {
+    const t = Math.round(ft * 12);
+    return t >= 12 ? `${Math.floor(t / 12)} ft ${t % 12} in` : `${t} in`;
+  };
+  /* Overhead-to-snare distances and each close mic's distance to its own piece, in feet and inches. */
+  function kitDistances(P, M) {
+    const sn = P.find((x) => x.id === "sn1"),
+      oh = M.filter((s) => /^Overhead/.test(s[0])),
+      rows = [];
+    oh.forEach((s) => rows.push({ mic: s[0], to: "snare", ft: V(...s[2]).distanceTo(sn.top), overhead: true }));
+    M.filter((s) => s.piece && !/^Overhead|XY|Room/.test(s[0])).forEach((s) => rows.push({ mic: s[0], to: s.piece.label.toLowerCase(), ft: V(...s[2]).distanceTo(V(...s[3])) }));
+    const d = oh.map((s) => V(...s[2]).distanceTo(sn.top)),
+      gap = d.length === 2 ? Math.abs(d[0] - d[1]) : null;
+    return { rows, gap, glyn: kit.oh === "glyn", height: oh[0] && kit.oh === "glyn" ? oh[0][2][1] - sn.top.y : null };
+  }
   function kitRefresh() {
     const P = kitPieces(),
       M = kitMics(P),
       n = M.length + (M.some((s) => /XY/.test(s[0])) ? 1 : 0);
     KIT_TECH[2] = M;
+    KIT_DIST = kitDistances(P, M);
     const pol = [kit.snareBottom && "snare top and bottom", kit.kick === "both" && "kick in and out"].filter(Boolean);
     KIT_TECH[1] =
       `${n} channel${n === 1 ? "" : "s"} for ${P.length} pieces. ` +
       (pol.length ? `Check polarity between ${pol.join(" and ")}. ` : "") +
-      (kit.oh === "spaced" ? "The overheads are placed the same distance from the snare. " : kit.oh === "none" ? "No overheads: the cymbals have no mic of their own unless you add hi-hat or ride mics. " : "") +
+      (kit.oh === "spaced" ? "The overheads are placed the same distance from the snare. " : kit.oh === "glyn" ? "Glyn Johns: both overheads the same distance from the snare (measure with a tape). " : kit.oh === "none" ? "No overheads: the cymbals have no mic of their own unless you add hi-hat or ride mics. " : "") +
       "Warnings below flag close mics that break the 3:1 rule.";
     return { P, M };
+  }
+  function kitDistHtml() {
+    const D = KIT_DIST;
+    if (!D || !D.rows.length) return "";
+    const ok = D.gap == null || D.gap <= 1 / 12 + 1e-6;
+    return (
+      `<table class="mgKitDist" aria-label="Distances in feet and inches"><tr><th>Mic</th><th>to</th><th>distance</th></tr>` +
+      D.rows.map((r) => `<tr><td>${r.mic}</td><td>${r.to}</td><td>${feetIn(r.ft)}</td></tr>`).join("") +
+      `</table>` +
+      (D.gap != null ? `<div class="${ok ? "m" : "err"}" id="mgOhGap">Overheads differ by ${feetIn(D.gap)} from the snare${ok ? ": matched (within 1 in)." : ": move one until they match (aim for within 1 in)."}</div>` : "") +
+      (D.glyn && D.height != null ? `<div class="m">Glyn Johns: the first mic is ${feetIn(D.height)} above the snare${D.height >= 3 && D.height <= 4 ? "" : " (3–4 ft is the usual starting point)"}.</div>` : "")
+    );
   }
   function kitUI(show) {
     const box = $("mgKit");
@@ -967,7 +1021,9 @@
       `<div class="row">${sel("snares", "Snares", n([1, 2]))}${sel("racks", "Rack toms", n([0, 1, 2]))}${sel("floors", "Floor toms", n([0, 1, 2]))}</div>` +
       `<div class="row">${sel("hh", "Hi-hat", yn)}${sel("ride", "Ride", yn)}${sel("crashes", "Crashes", n([0, 1, 2]))}${sel("splash", "Splash", yn)}</div>` +
       `<div class="row">${sel("kick", "Kick mic", [["out", "Outside"], ["in", "Inside"], ["both", "In and out"]])}${sel("snareBottom", "Snare bottom mic", yn)}${sel("tomMics", "Tom mics", yn)}</div>` +
-      `<div class="row">${sel("hhMic", "Hi-hat mic", yn)}${sel("rideMic", "Ride mic", yn)}${sel("oh", "Overheads", [["spaced", "Spaced pair"], ["xy", "XY pair"], ["none", "None"]])}${sel("room", "Room mic", yn)}</div>`;
+      `<div class="row">${sel("hhMic", "Hi-hat mic", yn)}${sel("rideMic", "Ride mic", yn)}${sel("oh", "Overheads", [["spaced", "Spaced pair"], ["glyn", "Glyn Johns"], ["xy", "XY pair"], ["none", "None"]])}${sel("room", "Room mic", yn)}</div>` +
+      `<div class="row">${sel("aux", "Aux percussion", [[0, "None"], [1, "Cowbell + tambourine"], [2, "Cowbell, tambourine, wood block"]])}${sel("auxMic", "Aux mic", yn)}</div>` +
+      kitDistHtml();
     box.querySelectorAll("[data-kit]").forEach(
       (e) =>
         (e.onchange = () => {
@@ -1011,6 +1067,33 @@
     }
     add(new THREE.CylinderGeometry(0.58, 0.48, 0.14, 20), black, V(0, guideSeatY, 1.05));
     add(new THREE.CylinderGeometry(0.1, 0.1, Math.max(0.1, guideSeatY - 0.12), 12), metal, V(0, (guideSeatY + 0.12) / 2, 1.05));
+    for (let a = 0; a < 3; a++) leg(V(0, 0.12, 1.05), V(Math.cos(a * 2.094) * 0.48, 0.02, 1.05 + Math.sin(a * 2.094) * 0.48));
+    /* Hardware: tripod bases under the stands, a snare basket, the hi-hat pedal, a kick pedal and beater, tom arms. */
+    const tripod = (x, z, r = 0.5) => [0, 1, 2].forEach((a) => leg(V(x, 0.14, z), V(x + Math.cos(a * 2.094 + 0.4) * r, 0.02, z + Math.sin(a * 2.094 + 0.4) * r)));
+    const P = kitPieces();
+    P.filter((pc) => pc.kind === "cym").forEach((pc) => tripod(pc.c.x, pc.c.z, pc.r > 0.45 ? 0.55 : 0.42));
+    const sn = P.find((x) => x.id === "sn1");
+    // snare stand: a post and three arms holding the shell
+    leg(V(sn.c.x, sn.c.y - sn.h / 2 - 0.04, sn.c.z), V(sn.c.x, 0.16, sn.c.z));
+    tripod(sn.c.x, sn.c.z, 0.45);
+    [0, 1, 2].forEach((a) => leg(V(sn.c.x, sn.c.y - sn.h / 2 - 0.04, sn.c.z), V(sn.c.x + Math.cos(a * 2.094 + 1.2) * sn.r * 0.95, sn.c.y - sn.h / 2 - 0.02, sn.c.z + Math.sin(a * 2.094 + 1.2) * sn.r * 0.95)));
+    // hi-hat pedal and the drummer's right kick pedal with its beater
+    const hh = P.find((x) => x.id === "hh");
+    if (hh) add(new THREE.BoxGeometry(0.22, 0.05, 0.5), black, V(hh.c.x + 0.05, 0.05, hh.c.z + 0.55));
+    add(new THREE.BoxGeometry(0.2, 0.05, 0.5), black, V(0, 0.05, 0.1));
+    seg(V(0, 0.1, -0.12), V(0, 0.9, -0.42), metal, 0.022); // beater shaft toward the head
+    add(new THREE.SphereGeometry(0.06, 10, 8), 0xe8e4da, V(0, 0.9, -0.42));
+    // rack tom arms: from the bass drum up to each rack tom
+    P.filter((pc) => /^rt/.test(pc.id)).forEach((pc) => seg(V(pc.c.x, 1.62, -0.78), V(pc.c.x, pc.c.y - pc.h / 2, pc.c.z - pc.r * 0.2), metal, 0.03));
+    // boom arms on the crashes and the ride
+    P.filter((pc) => pc.kind === "cym" && pc.id !== "hh").forEach((pc) => seg(V(pc.c.x + (pc.c.x > 0 ? 0.4 : -0.4), pc.c.y - 0.22, pc.c.z + 0.2), pc.c.clone().add(V(0, -0.02, 0)), metal, 0.022));
+    // aux percussion: a bell, a tambourine ring and a block on a clamped arm
+    P.filter((pc) => pc.kind === "aux").forEach((pc) => {
+      if (pc.id === "cb") add(new THREE.CylinderGeometry(pc.r * 0.55, pc.r, pc.r * 1.6, 14), 0xb8860b, pc.c);
+      else if (pc.id === "tb") add(new THREE.TorusGeometry(pc.r, 0.025, 8, 24), 0xd8b47a, pc.c).rotation.x = Math.PI / 2;
+      else add(new THREE.BoxGeometry(pc.r * 2, pc.r, pc.r * 1.2), 0x8a5a2b, pc.c);
+      leg(pc.c.clone().add(V(0, -0.1, 0)), V(pc.c.x, 1.5, pc.c.z - 0.3));
+    });
     return true;
   }
   function guideDrumKit() {
@@ -1728,7 +1811,7 @@
       const d = overhead.map((i) =>
         Math.hypot(t[2][i][2][0] - t[2][i][3][0], t[2][i][2][1] - t[2][i][3][1], t[2][i][2][2] - t[2][i][3][2]),
       );
-      if (Math.abs(d[0] - d[1]) > 0.2)
+      if (Math.abs(d[0] - d[1]) > (isKit(t) ? 1 / 12 : 0.2))
         out.push(
           "The overheads are not equally distant from their target. Re-measure from the snare before judging polarity.",
         );
@@ -1751,6 +1834,23 @@
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
     sc.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.72 })));
+  }
+  /* A fine floor grid under a drum kit (Tom, backlog): a line every 6 inches, every 12 inches a little stronger, so
+     distances in the kit's table can be read off the floor. Shown with the floor grid. */
+  function kitGrid(c) {
+    const pts = [],
+      strong = [],
+      R = 6;
+    for (let i = -R * 2; i <= R * 2; i++) {
+      const v = i / 2,
+        target = Number.isInteger(v) ? strong : pts;
+      target.push(v, 0.02, -R, v, 0.02, R, -R, 0.02, v, R, 0.02, v);
+    }
+    [[pts, 0.35], [strong, 0.6]].forEach(([a, o]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+      sc.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: o })));
+    });
   }
   function sourceHeat(k, post) {
     if (!$("mgSource").checked) return;
@@ -1923,7 +2023,10 @@
     $("mgFloorD").value = d;
     R.setClearColor(dark ? 0x1c1c19 : 0xf3f1ec);
     floor.rotation.x = -Math.PI / 2;
-    if ($("mgGrid").checked) floorGrid(w, d, dark ? 0x4a4944 : 0xb4b0a6);
+    if ($("mgGrid").checked) {
+      floorGrid(w, d, dark ? 0x4a4944 : 0xb4b0a6);
+      if (src.k === "drums") kitGrid(dark ? 0x6a6962 : 0x9a968c);
+    }
     player(src.post, src.k);
     instrument(src.k, src.post);
     sourceHeat(src.k, src.post);

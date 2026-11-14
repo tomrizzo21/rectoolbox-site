@@ -28,11 +28,11 @@ const MIC_MODELS = {
   "Audio Technica ATM350a": { address: "end", capsule: [0.5, 0.95, 0.5], aim: [0, 1, 0], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], ok: false },
   "Sennheiser e 908 B": { address: "end", capsule: [0.5, 0.97, 0.5], aim: [0, 1, 0], mount: [0.5, 0.05, 0.5], mountDir: [0, -1, 0], ok: false },
   "AKG D112 MkII": { address: "end", capsule: [0.5, 0.75, 0.75], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.3, 0.5], axis: [1, 0, 0], range: [-90, 90] }, ok: false },
-  "Shure Beta 52A": { address: "end", capsule: [0.5, 0.75, 0.75], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.3, 0.5], axis: [1, 0, 0], range: [-90, 90] }, ok: false },
-  "Sennheiser e 904": { db: "Sennheiser e904", address: "end", capsule: [0.5, 0.8, 0.7], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.3, 0.5], axis: [1, 0, 0], range: [-60, 60] }, ok: false },
+  "Shure Beta 52A": { address: "end", capsule: [0.5, 0.75, 0.75], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.37, 0.38], axis: [1, 0, 0], range: [-90, 90] }, ok: false },
+  "Sennheiser e 904": { db: "Sennheiser e904", address: "end", capsule: [0.5, 0.8, 0.7], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.42, 0.33], axis: [1, 0, 0], range: [-60, 60] }, ok: false },
   "Sennheiser e604": { address: "end", capsule: [0.5, 0.8, 0.7], aim: [0, 0.6, 0.8], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.5, 0.3, 0.5], axis: [1, 0, 0], range: [-60, 60] }, ok: false },
-  "Sennheiser MD 421-II": { address: "end", capsule: [0.1, 0.8, 0.5], aim: [-1, 0.3, 0], mount: [0.6, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.6, 0.15, 0.5], axis: [0, 0, 1], range: [-90, 90] }, ok: false },
-  "Shure SM7B": { address: "end", capsule: [0.95, 0.35, 0.5], aim: [1, 0, 0], mount: [0.5, 1, 0.5], mountDir: [0, 1, 0], ok: false },
+  "Sennheiser MD 421-II": { address: "end", capsule: [0.1, 0.8, 0.5], aim: [-1, 0.3, 0], mount: [0.35, 0, 0.5], mountDir: [0, -1, 0], pivot: { at: [0.36, 0.22, 0.5], axis: [0, 0, 1], range: [-90, 90] }, ok: false },
+  "Shure SM7B": { address: "end", capsule: [0.95, 0.35, 0.5], aim: [1, 0, 0], mount: [0.5, 1, 0.5], mountDir: [0, 1, 0], pivot: { at: [0.56, 0.48, 0.5], axis: [0, 0, 1], range: [-60, 60] }, ok: false },
   "Shure Beta 91A": { address: "boundary", capsule: [0.5, 1, 0.5], aim: [0, 1, 0], mount: [0.5, 0, 0.5], mountDir: [0, -1, 0], ok: false },
 };
 /* The model entry for a Mic database / locker name, or null. */

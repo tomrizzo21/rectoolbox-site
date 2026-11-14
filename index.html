@@ -69,7 +69,7 @@
 <div id="acctModal" class="modalBg" hidden role="dialog" aria-modal="true" aria-labelledby="acctTitle"><div class="mmBox acctBox">
  <div class="mmHead"><h2 id="acctTitle" style="flex:1">Account</h2><button data-acctclose aria-label="Close">✕</button></div>
  <p class="m">Optional. Signed in, your settings follow you to other browsers and devices; signed out, everything works as before and stays in this browser. <a href="privacy.html" target="_blank" rel="noopener">Privacy</a></p>
- <div id="acctNoWeb" hidden><p class="warn">Signing in works on <b>rectoolbox.net</b>, or from a local web server when testing (<code>python -m http.server 8000 --directory planner</code>, then open http://localhost:8000/fieldhouse-planner.html). A page opened straight from disk can't sign in.</p></div>
+ <div id="acctNoWeb" hidden><p class="warn">Signing in works on <b>rectoolbox.net</b>, or from a local web server when testing (<code>python -m http.server 8000 --directory planner</code>, then open http://localhost:8000/). A page opened straight from disk can't sign in.</p></div>
  <div id="acctOut" hidden>
   <button data-acct="google" class="acctGoogle">Continue with Google</button>
   <div class="acctOr m">or with email</div>
@@ -114,6 +114,7 @@
    <section data-page="field" data-title="Setup planner › Field"><h3>Setup planner › Field</h3>
     <div class="optRow" data-keys="sightlines height director"><span class="optLbl">Director's eyes at</span><span><input type="number" id="dirEye" min="4" max="20" step="0.5" value="8" style="width:56px"> ft</span></div>
     <div class="optRow" data-keys="field markings college nfl high school"><span class="optLbl">Hash marks</span><select id="hashSel" aria-label="Hash marks"><option value="college">College hashes (60 ft from each sideline)</option><option value="nfl">NFL hashes (70 ft 9 in from each sideline)</option><option value="hs">High school hashes (53 ft 4 in, thirds)</option><option value="none">No hashes</option></select></div>
+    <div class="optRow" data-keys="director conductor show hide"><span class="optLbl">Director</span><label><input type="checkbox" id="dirShow" checked> Show the director (drag the X to move)</label></div>
    </section>
    <section data-page="sound" data-title="Setup planner › Sound"><h3>Setup planner › Sound</h3><p class="m">How reflective the room is; used for the "total incl. room" heatmap and meters.</p>
     <div class="optRow" data-keys="venue acoustics reverb horton ipf outdoors"><span class="optLbl">Room</span><select id="venue" aria-label="Room acoustics"><option value="horton">Horton (hard, reverberant)</option><option value="ipf">IPF dome (turf)</option><option value="out">Outdoors</option></select></div>
@@ -365,4 +366,5 @@
 <script src="vendor/three-r128/SkeletonUtils.js"></script>
 <script src="js/view3d.js"></script>
 <script src="js/guide.js"></script>
+<script src="js/deeplink.js"></script>
 </main></body></html>

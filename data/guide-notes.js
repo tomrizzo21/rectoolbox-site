@@ -487,6 +487,27 @@ const GUIDE_NOTES = {
     ],
     refs: [GUIDE_REFS.niosh, GUIDE_REFS.nioshWiki, GUIDE_REFS.violet],
   },
+  /* Just for fun (Tom, 2026-11-13): a joke source. Played straight, labelled clearly. */
+  "Kobayashi Maru": {
+    source: [
+      "This one is a joke: ten mics on one person is not a technique, it is a cry for help.",
+      "The sound comes from everywhere at once: harmonica at the mouth, banjo at the chest, bass drum on the back, cymbals between the knees, and a foot keeping time.",
+      "For a real recording, one good stereo pair 6–10 ft in front (see the Shure booklet) gets the whole act, which is the point of a one-man band.",
+    ],
+    acc: [
+      { item: "Patience", level: "needed", why: "Ten channels of phase problems from one performer." },
+      { item: "A sense of humour", level: "suggested", why: "Required for the mix." },
+    ],
+    proc: {
+      rec: [
+        GP.hpf("80 Hz on everything except the back drum", "Removes the footstep thumps from mics that are not the drum."),
+        GP.align("Ten mics hear every part at slightly different times: check polarity against the harmonica mic, or mute nine of them."),
+        FIX("it sounds like a crowded closet", "Mute", [["Channels", "all but the room mic and one close mic"]], "The honest fix: fewer mics."),
+      ],
+      live: [],
+    },
+    refs: [GUIDE_REFS.shure],
+  },
   "Footsteps (foley)": {
     source: [
       "The sound is the shoe meeting the surface: match the shoe and the surface to the picture, and record a short sample of each surface first.",

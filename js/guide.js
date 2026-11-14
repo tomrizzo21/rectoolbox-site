@@ -434,6 +434,32 @@
           ),
         ],
       },
+      /* One-man band (Tom, 2026-11-13: "for fun ... add mics just all over (for humor, not for real micing strategy)").
+         A joke source: bass drum on the back, cymbals between the knees, harmonica rack, banjo. */
+      {
+        n: "Kobayashi Maru",
+        k: "oneman",
+        fixed: true, // the joke needs these exact mics: no locker matching, no "free" counts (Tom, 2026-11-13)
+        tags: "fun joke one man band busker harmonica banjo bass drum cymbals",
+        post: "standing",
+        spl: 105,
+        t: [
+          T(
+            "Leave no limb unmiked",
+            "Not a real technique. Every noise-making part gets a mic, then a few more for luck. Mix engineer not included.",
+            P("Harmonica", "Shure SM58", [0.9, 5.3, -1.6], [0, 5.0, -0.55], "6–12 in", "Cardioid; also catches the singing, the wheezing and the regret."),
+            P("Banjo", "Shure SM57", [0.6, 3.3, -2.0], [0.15, 3.3, -0.85], "12 in", "Aim at the head. The banjo will be heard anyway."),
+            P("Back drum", "Shure Beta 52A", [0, 3.4, 1.9], [0, 3.4, 0.75], "12 in", "Behind the performer, who now cannot sit down."),
+            P("Knee cymbals", "Shure SM57", [-0.9, 1.9, -1.6], [0, 1.7, -0.5], "12 in", "Between the knees. Do not ask how it got there."),
+            P("Left knee", "Sennheiser e604", [-0.55, 1.6, -1.0], [-0.3, 1.6, -0.3], "6 in", "Captures the knee. Unclear why."),
+            P("Right knee", "Sennheiser e604", [0.55, 1.6, -1.0], [0.3, 1.6, -0.3], "6 in", "For stereo knees."),
+            P("Hat mic", "Rode NT4 (XY stereo)", [0, 7.2, -0.6], [0, 6.0, -0.1], "1 ft", "XY stereo from above the hat: the hat's perspective."),
+            P("Shoe mic", "Shure Beta 91A", [0.3, 0.05, -0.9], [0.3, 0.0, -0.2], "on the floor", "The foot tap that drives the whole band."),
+            P("Room (far)", "Royer R-121", [-3.5, 5.5, -12], [0, 4, -0.5], "10–12 ft", "A ribbon across the room, mostly picking up the audience leaving."),
+            P("Mic on the mic", "Shure SM58", [1.6, 5.4, -2.2], [0.9, 5.3, -1.6], "1 ft", "Pointed at the harmonica mic. Backup, in case that mic gets lonely."),
+          ),
+        ],
+      },
       {
         n: "Door (open, close, slam)",
         k: "door",
@@ -787,11 +813,12 @@
           }
         });
       else if (k === "vocal" || k === "amp" || k === "steps") naturalRestPose(o);
-      else if (k === "saw" || k === "door" || k === "hit" || k === "water" || k === "clap" || k === "car") {
+      else if (k === "oneman" || k === "saw" || k === "door" || k === "hit" || k === "water" || k === "clap" || k === "car") {
         // saw: both hands on the saw's handles; door: right hand on the handle, left at rest; hit: hammer raised in the
         // right hand; water: both hands on the jug; clap: hands together; car: at rest
         const hands =
-          k === "saw" ? [V(0.05, 2.75, -1.25), V(0.45, 2.85, -1.05)]
+          k === "oneman" ? [V(-0.45, 3.6, -0.8), V(0.25, 3.25, -0.85)]
+          : k === "saw" ? [V(0.05, 2.75, -1.25), V(0.45, 2.85, -1.05)]
           : k === "hit" ? [null, V(0.35, 3.5, -1.35)]
           : k === "water" ? [V(-0.05, 3.0, -1.1), V(0.3, 3.05, -1.15)]
           : k === "clap" ? [V(-0.12, 3.5, -0.95), V(0.12, 3.5, -0.95)]
@@ -1507,20 +1534,22 @@
       txt = ft < 2 ? Math.round(ft * 12) + " in" : ft.toFixed(1) + " ft",
       cvs = document.createElement("canvas");
     cvs.width = 256;
-    cvs.height = 96;
+    cvs.height = 64;
     const g = cvs.getContext("2d");
-    g.fillStyle = "rgba(20,20,18,0.78)";
-    g.fillRect(0, 18, 256, 60);
-    g.fillStyle = "#fff";
-    g.font = "bold 44px system-ui, sans-serif";
-    g.textAlign = "center";
+    g.font = "600 34px system-ui, sans-serif";
+    g.textAlign = "left";
     g.textBaseline = "middle";
-    g.fillText(txt, 128, 49);
+    g.lineWidth = 6;
+    g.strokeStyle = "rgba(0,0,0,0.55)"; // a thin outline instead of a box: readable on any background, light on screen
+    g.strokeText(txt, 4, 32);
+    g.fillStyle = "rgba(255,255,255,0.85)";
+    g.fillText(txt, 4, 32);
     const tex = new THREE.CanvasTexture(cvs),
-      sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-    sp.position.copy(p.clone().add(q).multiplyScalar(0.5)).add(V(0, 0.18, 0));
-    sp.scale.set(0.8, 0.3, 1);
-    sp.renderOrder = 20;
+      sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    // small, just above the middle of the line and off to its side, and hidden behind things like any object
+    sp.center.set(0, 0);
+    sp.position.copy(p.clone().add(q).multiplyScalar(0.5)).add(V(0, 0.04, 0));
+    sp.scale.set(0.36, 0.09, 1);
     sc.add(sp);
   }
   function player(post, k) {
@@ -1649,7 +1678,18 @@
       const blade = add(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 24), 0xc9ced3, V(0.25, 2.45, -1.45));
       blade.rotation.z = Math.PI / 2;
       add(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8), 0x222222, V(0.05, 2.75, -1.25)).rotation.x = Math.PI / 2;
-    } else if (k === "hit") {
+    } else if (k === "oneman") {
+      const bd = add(new THREE.CylinderGeometry(0.9, 0.9, 0.55, 22), 0xb53735, V(0, 3.4, 0.75)); // bass drum on the back
+      bd.rotation.x = Math.PI / 2;
+      add(new THREE.CircleGeometry(0.82, 22), 0xf5f2e9, V(0, 3.4, 1.04));
+      [1.62, 1.78].forEach((y) => add(new THREE.CylinderGeometry(0.42, 0.42, 0.02, 20), 0xd9b44a, V(0, y, -0.45))); // knee cymbals
+      seg(V(-0.45, 3.6, -0.8), V(0.75, 2.85, -0.75), 0x8a6a45, 0.04); // banjo neck
+      add(new THREE.CylinderGeometry(0.42, 0.42, 0.12, 22), 0xe8e2d0, V(0.15, 3.3, -0.85)).rotation.x = Math.PI / 2; // banjo pot
+      [-0.35, 0.35].forEach((x) => seg(V(x, 4.6, -0.3), V(x, 5.05, -0.55), 0x9aa0a8, 0.015)); // harmonica rack
+      add(new THREE.BoxGeometry(0.42, 0.08, 0.1), 0xc9ced3, V(0, 5.0, -0.55)); // harmonica
+      add(new THREE.CylinderGeometry(0.42, 0.42, 0.06, 20), 0x2b2b2b, V(0, 5.72, -0.05)); // hat brim
+      add(new THREE.CylinderGeometry(0.28, 0.3, 0.55, 20), 0x2b2b2b, V(0, 6.02, -0.05));
+  } else if (k === "hit") {
       add(new THREE.BoxGeometry(2.4, 0.15, 1.4), 0xb0864f, V(0, 2.3, -1.4)); // bench
       [-1, 1].forEach((x) => [-1, 1].forEach((z) => seg(V(x * 1.1, 2.3, -1.4 + z * 0.6), V(x * 1.1, 0.02, -1.4 + z * 0.6), 0xb0864f, 0.05)));
       add(new THREE.BoxGeometry(0.9, 0.35, 0.45), 0x4a4f57, V(0, 2.55, -1.4)); // anvil block
@@ -1738,6 +1778,7 @@
   /* The guide is a planning sandbox. Its locker is deliberately independent from mics currently assigned on the main field canvas. */
   function guideStock(k) {
     if (!micInventoryDefined()) return 99; // no inventory yet: any mic may be picked, nothing is counted
+    if (!window.__signedInUser) return 99; // signed out: no counts and no limits (Tom, 2026-11-13)
     return Math.max(0, avail(k));
   }
   function role(s) {
@@ -1772,6 +1813,7 @@
   }
   function choose(s, i, t) {
     if (pick[i]) return pick[i];
+    if (source().fixed) return s[1]; // a source with a set list keeps its listed mics
     const r = role(s),
       need = paired(t, s) ? t[2].filter((x) => role(x) === r).length : 1;
     /* Rank every mic in the locker for this position instead of accepting only a few named models: a hard rule
@@ -1789,7 +1831,9 @@
       if (r === "xy") return stereo ? 100 : -1;
       if (stereo) return -1; // a stereo mic only fills a stereo position
       // the position's own note says what kind of mic it wants ("Cardioid dynamic; out of the blade line")
-      const want = ((s[4] || "") + " " + (s[5] || "")).toLowerCase();
+      // a matched pair is chosen by the pair's first position, so both get the same model
+      const s0 = need > 1 ? t[2].find((x) => role(x) === r) || s : s,
+        want = ((s0[4] || "") + " " + (s0[5] || "")).toLowerCase();
       if (r === "pencil" && !/SDC/.test(type)) return -1;
       if (/Boundary|Shotgun/.test(type) && r !== "general") return -1;
       let f = 0;
@@ -1827,7 +1871,7 @@
       pairs = {};
     t[2].forEach((s, i) => {
       const r = role(s);
-      if (paired(t, s)) {
+      if (paired(t, s) && !source().fixed) {
         (pairs[r] ||= []).push(i);
       }
     });
@@ -1843,7 +1887,7 @@
         );
       const m = models[0],
         need = ix.length;
-      if (guideStock(m) < need)
+      if (!source().fixed && guideStock(m) < need)
         out.push(
           m +
             " has only " +
@@ -1855,7 +1899,7 @@
     }
     Object.keys(MODELS).forEach((k) => {
       const count = chosen.filter((x) => x === k).length;
-      if (count > guideStock(k))
+      if (!source().fixed && count > guideStock(k))
         out.push("This setup assigns " + count + " × " + k + ", but the locker contains " + guideStock(k) + ".");
     });
     const overhead = t[2].map((s, i) => (/overhead/i.test(s[0]) ? i : null)).filter((i) => i != null);
@@ -1874,7 +1918,8 @@
       if (b.length > 5) out.push(`…and ${b.length - 5} more close-mic pairs under 3:1.`);
     }
     t[2].forEach((s) => {
-      if (s[2][2] > 0.35)
+      // behind the performer (the player faces -z); a mic aimed at something well in front, like a car, is not
+      if (s[2][2] > 0.35 && s[3][2] > -1.5 && source().k !== "oneman") // the one-man band's drum really is on the player's back
         out.push(s[0] + " is behind the player/source. Move it to the front or side of the source, then re-aim it.");
     });
     $("mgWarn").innerHTML = out.map((x) => "<div>⚠ " + x + "</div>").join("");
@@ -1947,6 +1992,9 @@
     } else if (k === "saw") {
       plume(V(0.25, 2.45, -1.45), V(0, 0.4, 1), 0.8, 0.35); // the cut throws sound and dust back and up
       hot(V(0.35, 2.62, -1.3), 0.2); // the motor
+    } else if (k === "oneman") {
+      hot(V(0, 5.0, -0.6), 0.16); hot(V(0.15, 3.3, -0.92), 0.3); hot(V(0, 1.7, -0.45), 0.25);
+      plume(V(0, 3.4, 1.05), V(0, 0, 1), 0.7, 0.6);
     } else if (k === "hit") {
       hot(V(0.05, 2.78, -1.4), 0.25);
       plume(V(0.05, 2.78, -1.4), V(0, 0.5, 0.8), 0.7, 0.4);
@@ -2068,15 +2116,66 @@
     const mount = top.clone().sub(axis.clone().multiplyScalar(side ? l.len : l.len * 0.82));
     return { mount, axis, r: l.r };
   }
+  /* Real mic models (Meshy, planner/models/mics/<key>.lite.glb, ~25k faces: a mic is a few pixels tall here) placed
+     from data/mic-models.js: the capsule at p, its face toward d, and the mount where the clip goes. Loaded on first
+     use and cached; until a model arrives (or when there is none, or the page is opened from disk) the drawn
+     cylinder stands in, and the scene rebuilds when it lands. Models are in metres; the guide works in feet. */
+  const micGlb = {};
+  function guideMicModel(p, d, key) {
+    const meta = typeof micModelFor === "function" && micModelFor(key);
+    if (!meta || meta.noSite || location.protocol === "file:" || !THREE.GLTFLoader) return null;
+    const c = micGlb[meta.key];
+    if (!c) {
+      micGlb[meta.key] = "loading";
+      new THREE.GLTFLoader().load(
+        "models/mics/" + encodeURIComponent(meta.key) + ".lite.glb",
+        (g) => {
+          const box = new THREE.Box3().setFromObject(g.scene);
+          micGlb[meta.key] = { scene: g.scene, box, size: box.getSize(new THREE.Vector3()) };
+          setTimeout(build, 0);
+        },
+        undefined,
+        () => (micGlb[meta.key] = "failed"),
+      );
+      return null;
+    }
+    if (typeof c === "string") return null;
+    const FT = 3.28084,
+      at = (f) => new THREE.Vector3(...f).multiply(c.size).add(c.box.min),
+      aim = new THREE.Vector3(...meta.aim).normalize(),
+      up = V(0, 1, 0);
+    // local frame (aim + a second axis) -> world frame (d + "up as seen from the source")
+    const second = (v, ref) => {
+      const s2 = ref.clone().sub(v.clone().multiplyScalar(ref.dot(v)));
+      return s2.lengthSq() > 1e-4 ? s2.normalize() : null;
+    };
+    const ls = second(aim, up) || second(aim, V(0, 0, 1)),
+      ws = second(d, up) || second(d, V(0, 0, -1)),
+      basis = (a, b) => new THREE.Matrix4().makeBasis(a, b, a.clone().cross(b)),
+      rot = basis(d.clone().normalize(), ws).multiply(basis(aim, ls).transpose()),
+      q = new THREE.Quaternion().setFromRotationMatrix(rot),
+      o = c.scene.clone();
+    o.scale.setScalar(FT);
+    o.quaternion.copy(q);
+    const capW = at(meta.capsule).multiplyScalar(FT).applyQuaternion(q);
+    o.position.copy(p).sub(capW);
+    sc.add(o);
+    const mount = at(meta.mount).multiplyScalar(FT).applyQuaternion(q).add(o.position),
+      axis = (meta.address === "side" ? up.clone() : aim.clone()).applyQuaternion(q).normalize();
+    return { mount, axis, r: (Math.min(c.size.x, c.size.z) * FT) / 2, model: true };
+  }
   /* A stand clip on the mic at `mount`, and the direction the boom comes from: never in line with the mic body nor
-     square to it (Tom, 2026-11-13), so the mic and the stand are both easy to see. The boom tilts down toward the
-     mic from behind it, about 35 degrees; 55 when that would sit too close to in-line or square. */
+     square to it (Tom, 2026-11-13), so the mic and the stand are both easy to see. The boom normally RISES from a lower
+     stand to the mic (the usual way to set a stand); it comes down from above only when the mic itself aims down at
+     the source (overheads, into a piano, over a kit), about 35 degrees; 55 when that would sit near in-line or square. */
   function clipAndBoom(at, axis, d, r) {
     let flat = V(d.x, 0, d.z);
     if (flat.lengthSq() < 1e-4) flat = V(axis.x, 0, axis.z);
     if (flat.lengthSq() < 1e-4) flat = V(0, 0, 1);
     flat.normalize();
-    const boomDir = (deg) => flat.clone().multiplyScalar(Math.cos((deg * Math.PI) / 180)).add(V(0, -Math.sin((deg * Math.PI) / 180), 0)).normalize();
+    const down = d.y < -0.25, // the mic looks down at the source: the boom comes over the top and tips down
+      boomDir = (deg) =>
+        flat.clone().multiplyScalar(Math.cos((deg * Math.PI) / 180)).add(V(0, (down ? -1 : 1) * Math.sin((deg * Math.PI) / 180), 0)).normalize();
     let b = boomDir(35);
     const off = (Math.acos(Math.min(1, Math.abs(b.dot(axis)))) * 180) / Math.PI;
     if (off < 20 || off > 75) b = boomDir(55);
@@ -2094,7 +2193,7 @@
       label = ((s && s[0]) || "").toLowerCase(),
       clip = /snare|tom/.test(label),
       low = /kick|cab/.test(label);
-    const body = guideMicBody(p, d, m);
+    const body = guideMicModel(p, d, m) || guideMicBody(p, d, m);
     if ($("mgStand").checked) {
       if (clip) {
         const mount = body.mount.clone().sub(d.clone().multiplyScalar(0.12));
@@ -2162,6 +2261,32 @@
     saveGuide();
     render();
   }
+  /* Make every mic sit at the distance its note gives ("2–4 in", "3–6 ft"): the middle of the range, measured from the
+     capsule to the point it aims at, keeping the direction the setup chose. The hand-placed positions drifted (the
+     close vocal mic sat ~10 in out for "2–4 in"; Tom, 2026-11-13). The kit builder places its own mics. */
+  function noteDistanceFt(txt) {
+    const m = /([\d.]+)\s*(?:[–-]\s*([\d.]+))?\s*(in|ft)\b/.exec(txt || "");
+    if (!m) return null;
+    const lo = +m[1],
+      hi = m[2] ? +m[2] : lo,
+      mid = (lo + hi) / 2 || hi / 2 || 0;
+    return (m[3] === "in" ? mid / 12 : mid) || null;
+  }
+  G.forEach((src) =>
+    src.t.forEach((t) =>
+      t[2].forEach((s) => {
+        const want = noteDistanceFt(s[4]);
+        if (!want) return;
+        const p = V(...s[2]),
+          q = V(...s[3]),
+          dir = p.clone().sub(q);
+        if (dir.lengthSq() < 1e-8) return;
+        const np = q.clone().add(dir.normalize().multiplyScalar(want));
+        s[2] = [+np.x.toFixed(4), +np.y.toFixed(4), +np.z.toFixed(4)];
+      }),
+    ),
+  );
+  window.GUIDE_SLOTS_FOR_TEST = () => G.flatMap((src) => src.t.flatMap((t) => t[2].map((s) => [src.n, s[0], s[2], s[3], s[4]]))); // test hook
   G.find((x) => x.k === "drums").t.push(KIT_TECH);
   let wantedGuideInstrument = "";
   function source() {
@@ -2457,6 +2582,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
     if (isKit(t0)) kitRefresh();
     kitUI(isKit(t0));
     const t = t0,
+      fixed = !!source().fixed,
       chosen = guideChoices(t);
     $("mgAdvice").textContent = t[1];
     notes(source().n, chosen);
@@ -2481,9 +2607,9 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
             '</div><select data-mg="' +
             i +
             '">' +
-            Object.keys(MODELS)
+            (fixed && !MODELS[s[1]] ? [s[1]] : []).concat(Object.keys(MODELS))
               .map((k) => {
-                const available = guideStock(k) - chosen.filter((x, j) => x === k && j !== i).length;
+                const available = fixed ? 99 : guideStock(k) - chosen.filter((x, j) => x === k && j !== i).length;
                 return (
                   '<option value="' +
                   k +
@@ -2493,7 +2619,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
                   (available <= 0 && k !== selected ? "disabled" : "") +
                   ">" +
                   k +
-                  (micInventoryDefined() ? " · free " + guideStock(k) : "") +
+                  (micInventoryDefined() && !fixed && window.__signedInUser ? " · free " + guideStock(k) : "") +
                   "</option>"
                 );
               })

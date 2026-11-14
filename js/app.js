@@ -1937,7 +1937,8 @@ function applyBg() {
   S = B.type === "field" ? 3.4 : 620 / Math.max(VMAX, UMAX - U0);
   W = PL * 2 + VMAX * S + 46;
   H = PT * 2 + (UMAX - U0) * S;
-  DIR = B.type === "field" ? { v: 166, u: 88 } : st.dir || (st.dir = { ...B.dir });
+  // the director can be moved on every background, the field included (kept apart from the other backgrounds' spot)
+  DIR = B.type === "field" ? st.dirField || (st.dirField = { v: 166, u: 88 }) : st.dir || (st.dir = { ...B.dir });
   GNV = Math.ceil(VMAX / GC) + 1;
   GNU = Math.ceil((UMAX - U0) / GC) + 1;
   HEATSTEP = B.type === "field" ? 2 : Math.max(0.5, Math.max(VMAX, UMAX - U0) / 110);
@@ -2010,7 +2011,9 @@ function syncRot() {
 function drawDir() {
   const g = $("gDir");
   g.innerHTML = "";
-  const mv = (st.bg || {}).type && st.bg.type !== "field";
+  if ($("dirShow")) $("dirShow").checked = !st.dirOff; // follows the loaded layout
+  if (st.dirOff) return; // the director is optional (Options › Show director)
+  const mv = true;
   const gg = el("g", { style: mv ? "cursor:grab" : "" }, g);
   if (mv) {
     gg.dataset.t = "x";
@@ -2120,10 +2123,13 @@ function drawGrid() {
     if (yd % 5 === 0) {
       el(
         "line",
-        { x1: X(VMAX), x2: X(0), y1: y, y2: y, stroke: "var(--line2)", "stroke-width": yd % 10 === 0 ? 1 : 0.6 },
+        { x1: X(FIELDW), x2: X(0), y1: y, y2: y, stroke: "var(--line2)", "stroke-width": yd % 10 === 0 ? 1 : 0.6 },
         g,
       );
-      if (yd % 10 === 0) el("text", { x: X(0) + 8, y: y + 4, "font-size": 12, fill: "var(--mute)" }, g, ydl);
+      // yard numbers sit on the field, their centre 12 yd (36 ft) in from each sideline, about 6 ft tall
+      if (yd % 10 === 0 && ydl > 0 && ydl <= 50)
+        for (const v of [36, FIELDW - 36])
+          el("text", { x: X(v), y: y + 6 * S * 0.35, "text-anchor": "middle", "font-size": 6 * S, "font-weight": 600, fill: "var(--line2)" }, g, ydl);
     } else {
       for (const v of [0, FIELDW])
         el(
@@ -2137,16 +2143,6 @@ function drawGrid() {
   }
   el("line", { x1: X(0), x2: X(0), y1: Y(U0), y2: Y(UMAX), stroke: "var(--line2)", "stroke-width": 0.8 }, g);
   el("line", { x1: X(FIELDW), x2: X(FIELDW), y1: Y(U0), y2: Y(UMAX), stroke: "var(--line2)", "stroke-width": 0.8 }, g);
-  {
-    const H = HASHES[(st && st.hash) || "college"];
-    if (H.at.length)
-      el(
-        "text",
-        { x: X(H.at[0]) - 4, y: Y(U0) + 10, "text-anchor": "end", "font-size": 10, fill: "var(--mute)" },
-        g,
-        H.label + " hashes",
-      );
-  }
   drawDir();
 }
 let HEATSTEP = 2;
@@ -3873,7 +3869,8 @@ sv.addEventListener("pointermove", (e) => {
     if (drag.t === "x") {
       DIR.v = nv;
       DIR.u = nu;
-      st.dir = { v: nv, u: nu };
+      if (bgDims().type === "field") st.dirField = { v: nv, u: nu };
+      else st.dir = { v: nv, u: nu };
       drawDir();
       heatDirty = true;
       drawSoon();
@@ -6775,6 +6772,14 @@ applyMicOwned();
 $("oStock").checked = !st.buy;
 $("oClear").checked = !!st.noCross;
 $("hashSel").value = st.hash || "college";
+$("dirShow").checked = !st.dirOff;
+$("dirShow").onchange = () => {
+  st.dirOff = !$("dirShow").checked; // optional, like any non-musician element
+  drawDir();
+  heatDirty = true;
+  drawSoon();
+  save();
+};
 $("hashSel").onchange = () => setHash($("hashSel").value);
 function layoutSaveMessage(message, error = false) {
   $("layoutSaveStatus").textContent = message;

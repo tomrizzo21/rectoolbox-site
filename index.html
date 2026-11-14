@@ -314,6 +314,7 @@
   <div class="row"><label><input type="checkbox" id="mgAim" checked> Mic aim line</label></div>
   <div class="row"><label><input type="checkbox" id="mgSource" checked> Source sound</label></div>
   <div class="row"><label><input type="checkbox" id="mgStand" checked> Mic stands</label></div>
+  <div class="row"><label><input type="checkbox" id="mgPerson" checked> Person</label></div>
   <div class="row"><label><input type="checkbox" id="mgGrid"> 1 ft floor grid</label></div>
   <h4>Floor</h4>
   <div class="row"><label class="m">Floor size <input id="mgFloorW" type="number" min="8" max="80" step="1" value="32" aria-label="Floor width"> × <input id="mgFloorD" type="number" min="8" max="80" step="1" value="26" aria-label="Floor depth"> ft</label></div>
@@ -323,8 +324,9 @@
    <div class="row"><label class="m mgSearchWrap">Search <input id="mgSearch" type="search" placeholder="e.g. bass drum, flute, footsteps" autocomplete="off"><div id="mgSearchResults" hidden role="listbox" aria-label="Matching instruments"></div></label><label class="m">Filter group <select id="mgFamily"><option value="all">All instruments</option><option value="college">College / concert band</option><option value="jazz">Jazz</option><option value="rock">Rock / pop</option><option value="marching">Marching band</option><option value="effects">Sound effects / foley</option></select></label><label class="m">Instrument <select id="mgInstrument"></select></label><label class="m">Posture <select id="mgPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label></div>
    <div class="row"><label class="m">Setup <select id="mgTechnique"></select></label></div>
    <div id="mgKit" class="mgKit" hidden aria-label="Build your own kit"></div>
-   <div id="mgMics" class="mgSlots"></div><div id="mgAdvice" class="mgTech"></div><div id="mgWarn" class="mgWarn" aria-live="polite"></div><div id="mgNotes" class="mgNotes"></div>
+   <div id="mgMics" class="mgSlots"></div><div id="mgAdvice" class="mgTech"></div><div id="mgWarn" class="mgWarn" aria-live="polite"></div>
    <div class="mgScene"><canvas id="mgCanvas" aria-label="3D mic technique guide"></canvas><div id="mgLoading" class="mgLoading" hidden aria-live="polite"></div><div class="mgCanvasTools"><div><button data-mgv="2d">▦ 2D</button><button data-mgv="3d" class="on">◩ 3D</button></div><div><button data-mga="out" title="Zoom out">−</button><button data-mga="in" title="Zoom in">+</button><button data-mga="fit">Fit</button><button data-mga="ccw" title="Rotate left">⟲</button><button data-mga="cw" title="Rotate right">⟳</button></div></div></div><p class="m">Drag to orbit, right-drag or Shift-drag to pan, scroll to zoom, double-click to refocus. The camera stays above the floor.</p>
+   <div id="mgNotes" class="mgNotes"></div><!-- reference notes below the 3D view, so the view gets the space on small screens -->
  </div>
 </div>
 <script src="js/store.js"></script>
@@ -358,6 +360,8 @@
 <!-- three.js r128, kept in the project (vendor/three-r128) so 3D works offline and doesn't depend on a CDN -->
 <script src="vendor/three-r128/three.min.js"></script>
 <script src="vendor/three-r128/GLTFLoader.js"></script>
+<script src="data/mic-models.js"></script>
+<script src="js/micmodel3d.js"></script>
 <script src="vendor/three-r128/SkeletonUtils.js"></script>
 <script src="js/view3d.js"></script>
 <script src="js/guide.js"></script>

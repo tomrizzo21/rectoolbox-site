@@ -2225,3 +2225,31 @@ body.wireDrawing #f {
   box-sizing: border-box;
   font: 12px ui-monospace, monospace;
 }
+
+/* 3D mic model in the Mic database info card (js/micmodel3d.js) */
+.mm3d {
+  position: relative;
+}
+.mm3d canvas {
+  display: block;
+  width: 100%;
+  height: 340px;
+  border-radius: 4px;
+  background: var(--field);
+  cursor: grab;
+  touch-action: none;
+}
+.mm3dMsg {
+  margin-top: 3px;
+}
+.mm3dTools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* The guide is always 3D: its 2D/3D switch is hidden (Tom, 2026-11-13); the 2D code stays for print and later use. */
+[data-win="guide"] .mgCanvasTools > div:has([data-mgv]) {
+  display: none;
+}

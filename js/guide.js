@@ -1498,6 +1498,31 @@
     x.computeLineDistances();
     sc.add(x);
   }
+  /* "Distance to source": a solid measuring line from the capsule to the source with its length written at the
+     middle, so it reads differently from the dashed aim line. */
+  function distanceMark(p, q) {
+    const c = theme.hex("--mic");
+    sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p, q]), new THREE.LineBasicMaterial({ color: c })));
+    const ft = p.distanceTo(q),
+      txt = ft < 2 ? Math.round(ft * 12) + " in" : ft.toFixed(1) + " ft",
+      cvs = document.createElement("canvas");
+    cvs.width = 256;
+    cvs.height = 96;
+    const g = cvs.getContext("2d");
+    g.fillStyle = "rgba(20,20,18,0.78)";
+    g.fillRect(0, 18, 256, 60);
+    g.fillStyle = "#fff";
+    g.font = "bold 44px system-ui, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(txt, 128, 49);
+    const tex = new THREE.CanvasTexture(cvs),
+      sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    sp.position.copy(p.clone().add(q).multiplyScalar(0.5)).add(V(0, 0.18, 0));
+    sp.scale.set(0.8, 0.3, 1);
+    sp.renderOrder = 20;
+    sc.add(sp);
+  }
   function player(post, k) {
     const sit = post === "sitting",
       skin = 0xc7ced5,
@@ -1707,7 +1732,7 @@
     const body = add(new THREE.CylinderGeometry(0.075, 0.09, 0.46, 14), metal, p);
     body.quaternion.setFromUnitVectors(V(0, 1, 0), d);
     const cap = add(new THREE.SphereGeometry(0.105, 12, 8), head, p.clone().add(d.clone().multiplyScalar(0.25)));
-    if ($("mgDist").checked) line(p, q);
+    if ($("mgDist").checked) distanceMark(p, q);
     polar(p, q, m);
   }
   /* The guide is a planning sandbox. Its locker is deliberately independent from mics currently assigned on the main field canvas. */
@@ -1749,23 +1774,49 @@
     if (pick[i]) return pick[i];
     const r = role(s),
       need = paired(t, s) ? t[2].filter((x) => role(x) === r).length : 1;
-    const ok = (k) => {
+    /* Rank every mic in the locker for this position instead of accepting only a few named models: a hard rule
+       for the mics that must be a kind (pencil = small diaphragm, XY = stereo), then how well its type and its
+       "good for" text fit the job, then the hand-tuned SCORE. The setup's own suggestion (s[1]) is used only when
+       the locker has nothing that fits. */
+    const fit = (k) => {
       const m = MODELS[k] || {},
-        type = m.type || "";
-      if (guideStock(k) < need) return false;
-      if (r === "xy") return m.pat === "xy" || m.ch === 2;
-      if (r === "pencil") return /SDC/.test(type);
-      if (r === "kick") return /Beta 52|KM1200/.test(k);
-      if (r === "drum") return /SM57|Audix i5|TM1200/.test(k);
-      if (r === "cab") return /e609|e906|SM57/.test(k);
-      if (r === "vocal") return /Beta 58|NT1|U87/.test(k);
-      return true;
+        type = m.type || "",
+        db = (typeof dbFor === "function" && dbFor(k)) || {},
+        uses = ((db.u || "") + " " + (m.u || "")).toLowerCase(),
+        pat = ((db.p || "") + " " + (m.pat || "")).toLowerCase();
+      if (guideStock(k) < need) return -1;
+      const stereo = m.pat === "xy" || m.ch === 2 || /stereo|XY/i.test(k);
+      if (r === "xy") return stereo ? 100 : -1;
+      if (stereo) return -1; // a stereo mic only fills a stereo position
+      // the position's own note says what kind of mic it wants ("Cardioid dynamic; out of the blade line")
+      const want = ((s[4] || "") + " " + (s[5] || "")).toLowerCase();
+      if (r === "pencil" && !/SDC/.test(type)) return -1;
+      if (/Boundary|Shotgun/.test(type) && r !== "general") return -1;
+      let f = 0;
+      const like = { vocal: /vocal|voice|speech|podcast/, drum: /snare|tom|drum|percussion/, kick: /kick|bass drum/,
+        cab: /guitar|amp|cab/, pencil: /overhead|acoustic|string|brass|wood|wind|piano|choir|ensemble/ }[r];
+      if (like && like.test(uses)) f += 40;
+      if (/dynamic/.test(want)) f += /Dynamic/.test(type) ? 35 : -25;
+      if (/condenser|ldc|sdc|pencil/.test(want)) f += /Dynamic|Ribbon/.test(type) ? -25 : 25;
+      if (/ribbon/.test(want)) f += /Ribbon/.test(type) ? 35 : -10;
+      for (const pt of ["supercardioid", "hypercardioid", "omni", "figure-8", "cardioid"])
+        if (new RegExp("\\b" + pt).test(want)) {
+          if (pat.includes(pt)) f += 10;
+          break;
+        }
+      if (r === "vocal") f += /Dynamic/.test(type) && /cardioid/.test(pat) ? 20 : /LDC/.test(type) ? 15 : 0;
+      if (r === "drum" || r === "cab") f += /Dynamic/.test(type) ? 20 : 0;
+      if (r === "kick") f += /Beta 52|KM1200|D112|D6|PGA52|e602|e902/.test(k) ? 40 : 0;
+      if (r === "drum") f += /SM57|Audix i5|TM1200|e604|e904|MD 421|Beta 57/.test(k) ? 20 : 0;
+      if (r === "cab") f += /e609|e906|SM57|MD 421|R-121/.test(k) ? 20 : 0;
+      if (r === "vocal") f += /Beta 58|SM58|NT1|U87|KSM9|KMS 105|e935|e945/.test(k) ? 20 : 0;
+      return f + (SCORE[k] || 50) / 10;
     };
-    return (
-      Object.keys(MODELS)
-        .filter(ok)
-        .sort((a, b) => (SCORE[b] || 0) - (SCORE[a] || 0) || b.localeCompare(a))[0] || s[1]
-    );
+    const ranked = Object.keys(MODELS)
+      .map((k) => [k, fit(k)])
+      .filter((x) => x[1] >= 0)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return (ranked[0] && ranked[0][0]) || s[1];
   }
   function guideChoices(t) {
     return t[2].map((s, i) => choose(s, i, t));
@@ -1918,7 +1969,7 @@
     add(new THREE.CircleGeometry(0.06, 10), 0xc4a55d, V(-1.4, 0.46, -1.44)).rotation.x = -Math.PI / 2;
     seg(V(-1.4, 0.34, -1.42), V(-0.3, 1.05, -1.15), 0x20272d, 0.018);
   }
-  function tripodBoom(p, d, low) {
+  function tripodBoom(p, d, low) { // p: the boom's end (at the mic clip); d: the boom's direction, pivot -> end
     const metal = 0x1f252b,
       boomLen = low ? 0.72 : 1.8,
       pivot = p.clone().sub(d.clone().multiplyScalar(boomLen));
@@ -1983,17 +2034,58 @@
     }
     return l;
   }
+  /* Side-address mics (large diaphragms, ribbons: data/mic-models.js says "side") stand upright with the capsule's
+     face toward the source; end-address mics point their tip at it. */
+  function sideAddress(key, type) {
+    const m = typeof micModelFor === "function" && micModelFor(key);
+    if (m) return m.address === "side";
+    return /LDC|Ribbon/.test(type || "");
+  }
+  /* Draws the mic with its capsule at p facing d. Returns where a clip holds it (mount) and the body's axis. */
   function guideMicBody(p, d, key) {
     const spec = MODELS[key] || {},
       l = micLook(key, spec.type || "Dynamic"),
-      q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), d),
-      soft = Math.min(l.r * 0.5, 0.03),
-      body = add(roundedCyl(l.r, l.len - l.cap, soft), l.body, p.clone().sub(d.clone().multiplyScalar(l.cap)));
-    body.quaternion.copy(q);
-    const head = add(roundedCyl(l.r * l.capR, l.cap, soft * 1.2), l.grille, p);
-    head.quaternion.copy(q);
-    const ring = add(new THREE.CylinderGeometry(l.r * l.capR * 1.04, l.r * l.capR * 1.04, 0.014, 20), l.ring, p.clone().sub(d.clone().multiplyScalar(l.cap)));
-    ring.quaternion.copy(q);
+      soft = Math.min(l.r * 0.5, 0.03);
+    let axis = d.clone();
+    const side = sideAddress(key, spec.type);
+    if (side) {
+      // the body's long axis is "up" as seen from the source: square to d, tilted only as much as d is
+      axis = V(0, 1, 0).sub(d.clone().multiplyScalar(d.y));
+      if (axis.lengthSq() < 1e-4) axis = V(0, 0, 1);
+      axis.normalize();
+    }
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), axis),
+      top = side ? p.clone().add(axis.clone().multiplyScalar(l.cap / 2)) : p,
+      neck = top.clone().sub(axis.clone().multiplyScalar(l.cap));
+    add(roundedCyl(l.r, l.len - l.cap, soft), l.body, neck).quaternion.copy(q);
+    add(roundedCyl(l.r * l.capR, l.cap, soft * 1.2), l.grille, top).quaternion.copy(q);
+    add(new THREE.CylinderGeometry(l.r * l.capR * 1.04, l.r * l.capR * 1.04, 0.014, 20), l.ring, neck).quaternion.copy(q);
+    if (side) {
+      // the live face: a small bright disc on the side toward the source ("this side toward the source")
+      const face = add(new THREE.CylinderGeometry(l.r * 0.55, l.r * 0.55, 0.01, 18), 0xe8eef2, p.clone().add(d.clone().multiplyScalar(l.r * l.capR)));
+      face.quaternion.setFromUnitVectors(V(0, 1, 0), d);
+    }
+    const mount = top.clone().sub(axis.clone().multiplyScalar(side ? l.len : l.len * 0.82));
+    return { mount, axis, r: l.r };
+  }
+  /* A stand clip on the mic at `mount`, and the direction the boom comes from: never in line with the mic body nor
+     square to it (Tom, 2026-11-13), so the mic and the stand are both easy to see. The boom tilts down toward the
+     mic from behind it, about 35 degrees; 55 when that would sit too close to in-line or square. */
+  function clipAndBoom(at, axis, d, r) {
+    let flat = V(d.x, 0, d.z);
+    if (flat.lengthSq() < 1e-4) flat = V(axis.x, 0, axis.z);
+    if (flat.lengthSq() < 1e-4) flat = V(0, 0, 1);
+    flat.normalize();
+    const boomDir = (deg) => flat.clone().multiplyScalar(Math.cos((deg * Math.PI) / 180)).add(V(0, -Math.sin((deg * Math.PI) / 180), 0)).normalize();
+    let b = boomDir(35);
+    const off = (Math.acos(Math.min(1, Math.abs(b.dot(axis)))) * 180) / Math.PI;
+    if (off < 20 || off > 75) b = boomDir(55);
+    const ring = add(new THREE.TorusGeometry(r * 1.15, 0.018, 8, 18), 0x1f252b, at);
+    ring.quaternion.setFromUnitVectors(V(0, 0, 1), axis);
+    const end = at.clone().sub(b.clone().multiplyScalar(0.16));
+    seg(end, at, 0x2a3238, 0.028);
+    add(new THREE.SphereGeometry(0.04, 10, 8), 0x151a20, end);
+    return { end, b };
   }
   const plainMic = mic;
   mic = (p, q, m, s) => {
@@ -2002,16 +2094,19 @@
       label = ((s && s[0]) || "").toLowerCase(),
       clip = /snare|tom/.test(label),
       low = /kick|cab/.test(label);
+    const body = guideMicBody(p, d, m);
     if ($("mgStand").checked) {
       if (clip) {
-        const mount = p.clone().sub(d.clone().multiplyScalar(0.28));
+        const mount = body.mount.clone().sub(d.clone().multiplyScalar(0.12));
         const clamp = add(new THREE.TorusGeometry(0.19, 0.045, 8, 14, Math.PI * 1.55), 0x1f252b, mount);
         clamp.rotation.x = Math.PI / 2;
-        seg(mount, p.clone().sub(d.clone().multiplyScalar(0.05)), metal, 0.035);
-      } else tripodBoom(p, d, low);
+        seg(mount, body.mount, metal, 0.035);
+      } else {
+        const c = clipAndBoom(body.mount, body.axis, d, body.r);
+        tripodBoom(c.end, c.b, low);
+      }
     }
-    guideMicBody(p, d, m);
-    if ($("mgDist").checked) line(p, q);
+    if ($("mgDist").checked) distanceMark(p, q);
     polar(p, q, m);
   };
   /* Build only while the guide is on screen, so a closed guide doesn't load its ~22 MB of models at start-up.
@@ -2042,10 +2137,25 @@
       floorGrid(w, d, dark ? 0x4a4944 : 0xb4b0a6);
       if (src.k === "drums") kitGrid(dark ? 0x6a6962 : 0x9a968c);
     }
-    player(src.post, src.k);
+    const firstSourcePart = sc.children.length; // everything added from here on is the source, not the floor or grid
+    if (!$("mgPerson") || $("mgPerson").checked) player(src.post, src.k);
     instrument(src.k, src.post);
     sourceHeat(src.k, src.post);
     if (t.di) diBox();
+    // the floor grows to fit the source (never shrinks: that stays a manual choice; Tom, 2026-11-13)
+    {
+      const box = new THREE.Box3();
+      sc.children.slice(firstSourcePart).forEach((o) => (o.isMesh || o.isGroup || o.type === "Object3D") && box.expandByObject(o));
+      if (!box.isEmpty()) {
+        const needW = Math.ceil(2 * Math.max(Math.abs(box.min.x), Math.abs(box.max.x)) + 4),
+          needD = Math.ceil(2 * Math.max(Math.abs(box.min.z + 0.3), Math.abs(box.max.z + 0.3)) + 4);
+        if ((needW > w || needD > d) && needW <= 80 && needD <= 80) {
+          $("mgFloorW").value = Math.max(w, needW);
+          $("mgFloorD").value = Math.max(d, needD);
+          return build();
+        }
+      }
+    }
     const shift = rigShift(src.k, t);
     t[2].forEach((s, i) => mic(V(...s[2]).add(shift), V(...s[3]).add(shift), choose(s, i, t), s));
     guideWarnings(t);
@@ -2096,7 +2206,7 @@
   /* Sound source, accessories and processing for the instrument (data/guide-notes.js; docs/MIC_TECHNIQUES_NOTES_PLAN.md).
      Open sections and the Recording / Live choice are remembered for the session. */
   let notesCtx = "rec";
-  const notesOpen = { src: true, acc: false, proc: false };
+  const notesOpen = { src: false, acc: false, proc: false }; // all start closed: the 3D view matters more (Tom, 2026-11-13)
   const isCond = (k) => /DC/.test((MODELS[k] || {}).type || "");
   /* Pad check (Tom, 2026-11-12): the loudest peak each chosen mic will see against its max SPL in the mic database.
      Source levels are the planner's own (KIND in js/app.js: dB SPL at 1 m, plus 12 dB for peaks, as the planner's
@@ -2213,7 +2323,7 @@
     box.querySelectorAll("details[data-notes]").forEach((d) => (notesOpen[d.dataset.notes] = d.open));
     const sec = (id, title, body) => `<details data-notes="${id}"${notesOpen[id] ? " open" : ""}><summary>${title}</summary>${body}</details>`;
     box.innerHTML =
-      sec("src", "Where the sound comes from" + draft, `<ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>`) +
+      sec("src", "Sound source" + draft, `<ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>`) +
       sec("acc", "Accessories", `<ul class="mgAcc">${acc}</ul>${padHtml}<p class="m">Suggested accessories for the sections in your layout are also listed in Inventory › Accessories.</p>`) +
       sec(
         "proc",
@@ -2295,7 +2405,7 @@ ul{margin:4px 0;padding-left:18px}h5{font-size:12px;margin:6px 0 2px;color:#555}
 ${shot ? `<img src="${shot}" alt="3D view of the setup">` : ""}
 <p>${e(t[1])}</p>
 <h2>Mics</h2><table class="mics"><tr class="m"><td>Slot</td><td>Mic</td><td>Distance</td><td>Notes</td></tr>${mics}</table>
-<h2>Where the sound comes from</h2><ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>
+<h2>Sound source</h2><ul>${N.source.map((x) => `<li>${e(x)}</li>`).join("")}</ul>
 ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
       const pads = padCheck(name, chosen).filter((x) => x.level !== "ok");
       return pads.length ? `<h3>Pad check</h3><ul>${pads.map((x) => `<li><b>${e(x.label)}</b> (${e(x.model)}): peaks about ${x.peak} dB SPL at ${e(x.dist)}, max ${x.lim} dB; ${e(x.say)}.${e(x.pre)}</li>`).join("")}</ul>` : "";
@@ -2551,6 +2661,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
     "mgFloorW",
     "mgFloorD",
     "mgDist",
+    "mgPerson",
     "mgPattern",
     "mgSource",
     "mgAim",
@@ -2586,7 +2697,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
       if (o.orb) orb = o.orb;
       if (o.twoD) twoD = o.twoD;
       if (o.tar && tar) tar.set(...o.tar);
-      if (o.view) view = o.view;
+      // the 2D/3D switch is hidden (Tom, 2026-11-13): the guide is always 3D, whatever an older save says
     } catch (e) {
       console.warn("Saved guide settings partly ignored", e);
     }
@@ -2606,7 +2717,7 @@ ${acc ? `<h2>Accessories</h2><ul>${acc}</ul>` : ""}${(() => {
     slots();
     build();
   };
-  ["mgFloorW", "mgFloorD", "mgDist", "mgPattern", "mgAim", "mgSource", "mgStand", "mgGrid"].forEach(
+  ["mgFloorW", "mgFloorD", "mgDist", "mgPattern", "mgAim", "mgSource", "mgStand", "mgGrid", "mgPerson"].forEach(
     (id) => ($(id).onchange = build),
   );
   options();

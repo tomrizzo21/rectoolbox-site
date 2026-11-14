@@ -4608,7 +4608,7 @@ function openMicInfo(k, row) {
     `<div class="mmHead"><div class="f1"><div class="m">${esc(M.brand)}</div><h2 id="mmTitle">${esc(M.model)}</h2>
   <div class="mt4"><span class="badge" style="background:var(--field);color:var(--ink)">${M.type}</span> <span class="m">Owned ${esc(M.n)}${I.micAdd[k] ? ` · +${I.micAdd[k]} to buy` : ""} · in use ${u}${assigned.length ? " (" + esc(assigned.join(", ")) + ")" : ""}</span></div></div>
   ${M.url ? `<a href="${M.url}" target="_blank" rel="noopener">Product page ↗</a>` : ""}<button data-mmclose aria-label="Close">✕</button></div>
-  <div class="mmGrid"><div><div class="mmPic">${micImg(k, M)}</div>
+  <div class="mmGrid"><div><div class="mmPic" id="mmPic">${micImg(k, M)}</div>${typeof micModel3D === "object" && micModel3D.has(k) ? '<div class="row"><button class="chip" id="mm3dBtn" aria-pressed="false">3D model</button></div>' : ""}
    <div class="row"><label class="m ptr"><input type="file" id="mmPhoto" accept="image/*" style="display:none"><span class="chip">${inv().photos[k] ? "Replace photo" : "Add a photo"}</span></label>${inv().photos[k] ? '<button class="chip" id="mmPhotoDel">Remove</button>' : ""}</div>
    <div class="mmSec"><h4>Options and switches</h4><p>${M.opts || "None"}</p>${(() => {
      const r = dbFor(k) || row;
@@ -4643,6 +4643,19 @@ function openMicInfo(k, row) {
           openMicInfo(k, row);
         }),
     );
+  // Photo / 3D model toggle (js/micmodel3d.js); the photo comes back when the card is rebuilt or the toggle is pressed again
+  if ($("mm3dBtn"))
+    $("mm3dBtn").onclick = () => {
+      const b = $("mm3dBtn"), on = b.getAttribute("aria-pressed") !== "true";
+      b.setAttribute("aria-pressed", on);
+      b.classList.toggle("on", on);
+      b.textContent = on ? "Photo" : "3D model";
+      if (on) micModel3D.open($("mmPic"), k);
+      else {
+        micModel3D.close();
+        $("mmPic").innerHTML = micImg(k, M);
+      }
+    };
   $("mmPhoto").onchange = () => {
     const f = $("mmPhoto").files[0];
     if (!f) return;
